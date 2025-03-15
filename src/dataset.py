@@ -54,14 +54,14 @@ class SolarPanelDataset(Dataset):
 
         if self.type == "pan":
             self.dfs[0] = self.dfs[0][
-                self.dfs[0]["type1"] in ("pan", "mix", "solar_park")
+                self.dfs[0]["type1"].isin(("pan", "mix", "solar_park"))
             ]
             self.dfs[1] = self.dfs[1][
                 self.dfs[1]["img_name"].isin(self.dfs[0]["img_name"])
             ]
 
         if self.type == "boil":
-            self.dfs[0] = self.dfs[0][self.dfs[0]["type1"] in ("boil", "mix")]
+            self.dfs[0] = self.dfs[0][self.dfs[0]["type1"].isin(("boil", "mix"))]
             self.dfs[1] = self.dfs[1][
                 self.dfs[1]["img_name"].isin(self.dfs[0]["img_name"])
             ]
@@ -100,11 +100,12 @@ class SolarPanelDataset(Dataset):
         Return the desired image along with the relevant data (mask or label).
         """
 
-        img_number = self.dfs[0].loc[idx]["number"]
-        img_name = self.dfs[0].loc[idx]["img_name"]
-        img_filename = img_name + ".JPG"
-        img = torchvision.io.decode_image(self.img_path / img_filename)
-
+        img_number = self.dfs[0].iloc[idx]["number"]
+        img_name = str(self.dfs[0].iloc[idx]["img_name"])
+        try:
+            img = torchvision.io.decode_image(self.img_path / (img_name + ".JPG"))
+        except RuntimeError:
+            img = torchvision.io.decode_image(self.img_path / (img_name + ".jpg"))
         if self.mode == "seg":
             mask = torch.zeros((1, img.size(1), img.size(2)))
 
