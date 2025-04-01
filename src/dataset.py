@@ -20,7 +20,9 @@ class SolarPanelDataset(Dataset):
         xlsx_path: pathlib.Path,
         mode: str,
         type: str,
-        transform: v2.Transform = None,
+        photo_transform: v2.Transform = None,
+        geo_tranform: v2.Transform = None,
+
     ) -> None:
         """
         Args:
@@ -37,7 +39,8 @@ class SolarPanelDataset(Dataset):
 
         self.img_path = img_path
         self.xlsx_path = xlsx_path
-        self.transform = transform
+        self.photo_transform = photo_transform
+        self.geo_transform = geo_tranform
         self.mode = mode
         self.type = type
         self.dfs = pd.read_excel(xlsx_path, sheet_name=[0, 1, 2])
@@ -125,12 +128,17 @@ class SolarPanelDataset(Dataset):
 
             mask = mask.float()
 
-            if self.transform:
-                img, mask = self.transform(img, mask)
+            if self.photo_transform:
+                img = self.photo_transform(img)
+
+            if self.geo_transform:
+                img, mask = self.geo_transform(img, mask)
 
             return img, mask
 
         if self.mode == "cls":
-            if self.transform:
-                return self.transform(img), self.labels.get(img_number, 0)
+            if self.photo_transform:
+                img = self.photo_transform(img)
+            if self.geo_transform:
+                img = self.geo_transform(img)
             return img, self.labels.get(img_number, 0)
