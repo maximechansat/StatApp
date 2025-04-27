@@ -1,11 +1,11 @@
 from torch.utils.data import Dataset
 import torch
-from torchvision.transforms import v2
 import pandas as pd
-import torchvision
 import pathlib
 import matplotlib
 import numpy as np
+import cv2
+import albumentations as A
 from typing import Tuple
 
 
@@ -20,9 +20,9 @@ class SolarPanelDataset(Dataset):
         xlsx_path: pathlib.Path,
         mode: str,
         type: str,
-        photo_transform: v2.Transform = None,
-        geo_tranform: v2.Transform = None,
-
+        train: bool,
+        p: float,
+        seed: int,
     ) -> None:
         """
         Args:
@@ -32,19 +32,43 @@ class SolarPanelDataset(Dataset):
             Along with the images, in classiciation mode, the Dataset will return labels and in segmentation masks.
             type (str): either "boil" (for boiler), "pan" (for solar panel) or "all".
             The dataset will only return the image containing elements of the type specified.
-
+            p (float): proportion of images allocated to the test set
 
         Note: the class will mostly be instanciated with mode="seg", type="pan" and mode="cls", type="all".
         """
 
         self.img_path = img_path
         self.xlsx_path = xlsx_path
-        self.photo_transform = photo_transform
-        self.geo_transform = geo_tranform
         self.mode = mode
         self.type = type
         self.dfs = pd.read_excel(xlsx_path, sheet_name=[0, 1, 2])
         self.labels = {}
+        self.seed = seed
+        self.train = train
+        self.p = p
+        self.transform = A.Compose(
+            [
+                A.SmallestMaxSize(max_size_hw=(500, 500)),
+                A.CropNonEmptyMaskIfExists(height=500, width=500),
+                A.RandomCrop(height=299, width=299),
+                A.Normalize(),
+                A.ToTensorV2()
+            ],
+            seed=self.seed,
+        )
+
+        if self.train:
+            self.transform = A.Compose(
+                [
+                    A.SmallestMaxSize(max_size_hw=(500, 500)),
+                    A.CropNonEmptyMaskIfExists(height=500, width=500),
+                    A.RandomCrop(height=299, width=299),
+                    A.D4(),
+                    A.Normalize(),
+                    A.ToTensorV2()
+                ],
+                seed=self.seed,
+            )
 
         self.compute_labels()
 
@@ -70,6 +94,13 @@ class SolarPanelDataset(Dataset):
             ]
 
         self.labels = {}
+
+        rng = np.random.default_rng(seed=self.seed)
+        mask = rng.binomial(1, self.p, len(self.dfs[0])) >= 1
+        if self.train:
+            mask = 1 - mask
+        self.dfs[0] = self.dfs[0].loc[mask]
+        self.dfs[1] = self.dfs[1][self.dfs[1]["img_name"].isin(self.dfs[0]["img_name"])]
 
         if self.mode == "seg":
             solar_elt_names = set(
@@ -105,40 +136,22 @@ class SolarPanelDataset(Dataset):
 
         img_number = self.dfs[0].iloc[idx]["number"]
         img_name = str(self.dfs[0].iloc[idx]["img_name"])
-        try:
-            img = torchvision.io.decode_image(self.img_path / (img_name + ".JPG"))
-        except RuntimeError:
-            img = torchvision.io.decode_image(self.img_path / (img_name + ".jpg"))
-        if self.mode == "seg":
-            mask = torch.zeros((1, img.size(1), img.size(2)))
+        img = cv2.imread(self.img_path / (img_name + ".jpg"))
+        img = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
 
+        if self.mode == "seg":
+            mask = np.zeros((img.shape[0], img.shape[1]), dtype=np.uint8)
             for vertices in self.labels.get(img_number, []):
-                x = np.linspace(0, img.size(1) - 1, img.size(1))
-                y = np.linspace(0, img.size(2) - 1, img.size(2))
+                x = np.linspace(0, img.shape[0] - 1, img.shape[0])
+                y = np.linspace(0, img.shape[1] - 1, img.shape[1])
                 xv, yv = np.meshgrid(x, y)
                 points = np.vstack((xv.ravel(), yv.ravel())).T
 
                 polygon_path = matplotlib.path.Path(vertices)
-                submask = torch.Tensor(
-                    polygon_path.contains_points(points).reshape(
-                        (img.size(2), img.size(1))
-                    )
-                ).T
-                mask = torch.logical_or(submask, mask)
-
-            mask = mask.float()
-
-            if self.photo_transform:
-                img = self.photo_transform(img)
-
-            if self.geo_transform:
-                img, mask = self.geo_transform(img, mask)
-
-            return img, mask
+                submask = polygon_path.contains_points(points).reshape(img.shape[1], img.shape[0]).T
+                mask = np.maximum(mask, submask)
+            transformed = self.transform(image=img, mask=mask)
+            return transformed["image"], transformed["mask"]
 
         if self.mode == "cls":
-            if self.photo_transform:
-                img = self.photo_transform(img)
-            if self.geo_transform:
-                img = self.geo_transform(img)
-            return img, self.labels.get(img_number, 0)
+            return self.transform(image=img), self.labels.get(img_number, 0)
