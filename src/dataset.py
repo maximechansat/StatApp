@@ -21,7 +21,7 @@ class SolarPanelDataset(Dataset):
         mode: str,
         type: str,
         train: bool,
-        p: float,
+        p_test: float,
         seed: int,
     ) -> None:
         """
@@ -45,14 +45,14 @@ class SolarPanelDataset(Dataset):
         self.labels = {}
         self.seed = seed
         self.train = train
-        self.p = p
+        self.p = p_test
         self.transform = A.Compose(
             [
                 A.SmallestMaxSize(max_size_hw=(500, 500)),
                 A.CropNonEmptyMaskIfExists(height=500, width=500),
                 A.RandomCrop(height=299, width=299),
                 A.Normalize(),
-                A.ToTensorV2()
+                A.ToTensorV2(),
             ],
             seed=self.seed,
         )
@@ -65,7 +65,7 @@ class SolarPanelDataset(Dataset):
                     A.RandomCrop(height=299, width=299),
                     A.D4(),
                     A.Normalize(),
-                    A.ToTensorV2()
+                    A.ToTensorV2(),
                 ],
                 seed=self.seed,
             )
@@ -98,7 +98,7 @@ class SolarPanelDataset(Dataset):
         rng = np.random.default_rng(seed=self.seed)
         mask = rng.binomial(1, self.p, len(self.dfs[0])) >= 1
         if self.train:
-            mask = 1 - mask
+            mask = np.logical_not(mask)
         self.dfs[0] = self.dfs[0].loc[mask]
         self.dfs[1] = self.dfs[1][self.dfs[1]["img_name"].isin(self.dfs[0]["img_name"])]
 
@@ -148,7 +148,11 @@ class SolarPanelDataset(Dataset):
                 points = np.vstack((xv.ravel(), yv.ravel())).T
 
                 polygon_path = matplotlib.path.Path(vertices)
-                submask = polygon_path.contains_points(points).reshape(img.shape[1], img.shape[0]).T
+                submask = (
+                    polygon_path.contains_points(points)
+                    .reshape(img.shape[1], img.shape[0])
+                    .T
+                )
                 mask = np.maximum(mask, submask)
             transformed = self.transform(image=img, mask=mask)
             return transformed["image"], transformed["mask"]
