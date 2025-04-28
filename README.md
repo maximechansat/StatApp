@@ -15,7 +15,7 @@ Clonez le dépôt :
 git clone https://github.com/maximechansat/StatApp.git
 ```
 
-Installez les dépendances :
+Installez les dépendances (avec les versions utilisées) :
 
 ```bash
 pip install -r requirements.txt
