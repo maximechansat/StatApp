@@ -7,6 +7,7 @@ import numpy as np
 import cv2
 import albumentations as A
 from typing import Tuple
+import os
 
 
 class SolarPanelDataset(Dataset):
@@ -78,6 +79,32 @@ class SolarPanelDataset(Dataset):
         In classification mode, a label of 1 denotes the presence of a solar panel and 0 its absence.
         In segmentation mode, a white pixel denotes the presence of a solar panel and a black one its absence.
         """
+
+        # Checking if all the masks are well defined
+        def is_float(value):
+            try:
+                float(value)
+                return True
+            except ValueError:
+                return False
+
+        invalid_rows = self.dfs[2][~self.dfs[2]['edge_rank'].apply(is_float) | ~self.dfs[2]['long'].apply(is_float) | ~self.dfs[2]['lat'].apply(is_float)]
+
+        invalid_elt_names = invalid_rows['elt_name'].unique()
+
+        self.dfs[2] = self.dfs[2][~self.dfs[2]['elt_name'].isin(invalid_elt_names)]
+        self.dfs[1] = self.dfs[1][~self.dfs[1]['elt_name'].isin(invalid_elt_names)]
+        ####
+
+
+        # Checking if the image names in both DataFrame and disk match
+        img_names_df = self.dfs[0]["img_name"].astype(str)
+        img_names_disk = {f.split(".")[0] for f in os.listdir(self.img_path)}
+        valid_img_names = set(img_names_df) & img_names_disk
+        unique_img_names = img_names_df.value_counts()[lambda x: x == 1].index
+        final_img_names = valid_img_names & set(unique_img_names)
+        self.dfs[0] = self.dfs[0][img_names_df.isin(final_img_names)].copy()
+        ####
 
         if self.type == "pan":
             self.dfs[0] = self.dfs[0][
