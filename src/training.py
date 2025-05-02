@@ -5,7 +5,7 @@ from tqdm import tqdm
 from torch.utils.data import DataLoader
 from torch.utils.tensorboard import SummaryWriter
 from datetime import datetime
-import multiprocessing
+
 
 def jaccard(prediction, target, epsilon=1e-07, threshold=0.5):
     # Ensure same shape
@@ -22,27 +22,36 @@ def jaccard(prediction, target, epsilon=1e-07, threshold=0.5):
     jaccard_index = (intersection + epsilon) / (union + epsilon)
     return jaccard_index.mean()
 
-def train_one_epoch(epoch_index, tb_writer, model, loss_fn, optimizer, train_dataloader, device):
+
+def train_one_epoch(
+    epoch_index,
+    tb_writer,
+    model,
+    loss_fn,
+    optimizer,
+    train_dataloader,
+    device,
+    threshold,
+):
+
     running_train_loss, running_train_jac = 0, 0
+
     for i, img_mask in enumerate(tqdm(train_dataloader, position=0, leave=True)):
         img = img_mask[0].to(device)
-        mask = img_mask[1].unsqueeze(1).float()
-        mask = mask.to(device)
+        mask = img_mask[1].squeeze().float().to(device)
 
-        optimizer.zero_grad(set_to_none=True)
+        y_pred = model(img)["out"].squeeze()
 
-        y_pred = model(img)["out"]
-
-        jac = jaccard(y_pred, mask)
+        bin_pred = (y_pred >= threshold).long()
+        jac = jaccard(bin_pred, mask)
         loss = loss_fn(y_pred, mask)
 
         running_train_loss += loss.item()
         running_train_jac += jac.item()
 
         loss.backward()
-
-
         optimizer.step()
+        optimizer.zero_grad(set_to_none=True)
 
         if i % 50 == 0:
             last_loss = running_train_loss / 50
@@ -54,104 +63,92 @@ def train_one_epoch(epoch_index, tb_writer, model, loss_fn, optimizer, train_dat
             running_train_loss = 0.0
             running_train_jac = 0.0
 
-def main(finetune=False):
-    print("starts")
-    data_path = Path(r"D:\Dev_python\StatApp-main\data")
-    batch_size = 64
-    lr = 0.001
-    epochs = 1
-    seed = 1048596
-    p = 0.1
-    num_workers = 8
 
-    xlsx_path = data_path / "solar_panel_data_madagascar.xlsx"
-    img_path = data_path / "img"
-    weights_path = data_path / "WEIGHTS"
-    seg_weights_path = weights_path / "model_bdappv_seg.pth"
+data_path = Path("../data")
+batch_size = 15
+lr = 0.001
+epochs = 10
+seed = 1048596
+p = 0.3
+num_workers = 8
+threshold = 0.5
 
+xlsx_path = data_path / "solar_panel_data_madagascar.xlsx"
+img_path = data_path / "img"
+weights_path = data_path / "WEIGHTS"
+seg_weights_path = weights_path / "model_bdappv_seg.pth"
 
-    print("dataset")
-    torch.manual_seed(seed)
-    train_dataset = SolarPanelDataset(img_path, xlsx_path, "seg", "pan", True, p, seed)
-    test_dataset = SolarPanelDataset(img_path, xlsx_path, "seg", "pan", False, p, seed)
+torch.manual_seed(seed)
 
-    train_dataloader = DataLoader(
-        train_dataset,
-        batch_size=batch_size,
-        shuffle=True,
-        pin_memory=True,
-        num_workers=num_workers,
-        persistent_workers=True,
-    )
-    test_dataloader = DataLoader(
-        test_dataset,
-        batch_size=batch_size,
-        shuffle=True,
-        pin_memory=True,
-        num_workers=num_workers,
-        persistent_workers=True,
-    )
+train_dataset = SolarPanelDataset(img_path, xlsx_path, "seg", "pan", True, p, seed)
+test_dataset = SolarPanelDataset(img_path, xlsx_path, "seg", "pan", False, p, seed)
 
-    print("model")
-    torch.backends.cudnn.benchmark = True
-    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    model = torch.load(seg_weights_path, weights_only=False, map_location=device)
-    model = model.to(device)
-    loss_fn = torch.nn.BCEWithLogitsLoss()
+train_dataloader = DataLoader(
+    train_dataset,
+    batch_size=batch_size,
+    shuffle=True,
+    pin_memory=True,
+    num_workers=num_workers,
+    persistent_workers=True,
+)
+test_dataloader = DataLoader(
+    test_dataset,
+    batch_size=batch_size,
+    shuffle=True,
+    pin_memory=True,
+    num_workers=num_workers,
+    persistent_workers=True,
+)
 
-    if finetune:
-        print("finetune")
-        for param in model.parameters():
-            param.requires_grad = False
+torch.backends.cudnn.benchmark = True
+device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+model = torch.load(seg_weights_path, weights_only=False, map_location=device)
+model = model.to(device)
+loss_fn = torch.nn.BCEWithLogitsLoss()
 
-        for param in model.classifier[4].parameters():
-            param.requires_grad = True
+optimizer = torch.optim.AdamW(
+    filter(lambda p: p.requires_grad, model.parameters()), lr=lr
+)
 
-    optimizer = torch.optim.AdamW(filter(lambda p: p.requires_grad, model.parameters())
-                                  , lr=lr)
+timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+writer = SummaryWriter(f"runs/solar_dataset_segmentation_{timestamp}")
+best_test_loss = float("inf")
 
-    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-    writer = SummaryWriter(f"runs/solar_dataset_segmentation_{timestamp}")
-    best_test_loss = float('inf')
+print("Training on: ", device)
 
-    print("training on : ",device)
-    for epoch in range(epochs):
-        print(f"Epoch {epoch + 1}:")
+for epoch in range(epochs):
+    print(f"Epoch {epoch + 1}:")
 
-        model.train()
-        train_one_epoch(epoch, writer, model, loss_fn, optimizer, train_dataloader, device)
-        model.eval()
+    model.train()
+    train_one_epoch(epoch, writer, model, loss_fn, optimizer, train_dataloader, device, threshold)
+    model.eval()
 
-        running_test_loss = 0
-        running_test_jac = 0
+    running_test_loss = 0
+    running_test_jac = 0
 
-        with torch.no_grad():
-            for idx, img_mask in enumerate(tqdm(test_dataloader, position=0, leave=True)):
-                img = img_mask[0].float().to(device)
-                mask = img_mask[1].unsqueeze(1).float().to(device)
+    with torch.no_grad():
+        for idx, img_mask in enumerate(tqdm(test_dataloader, position=0, leave=True)):
+            img = img_mask[0].to(device)
+            mask = img_mask[1].squeeze().float().to(device)
 
-                y_pred = model(img)["out"]
-                loss = loss_fn(y_pred, mask)
-                dc = jaccard(y_pred, mask)
+            y_pred = model(img)["out"].squeeze()
 
-                running_test_loss += loss.item()
-                running_test_jac += dc.item()
+            bin_pred = (y_pred >= threshold).long()
+            jac = jaccard(bin_pred, mask)
+            loss = loss_fn(y_pred, mask)
 
-        avg_test_loss = running_test_loss / len(test_dataloader)
-        avg_test_jac = running_test_jac / len(test_dataloader)
+            running_test_loss += loss.item()
+            running_test_jac += jac.item()
 
-        print(f"Validation: loss: {avg_test_loss}, Jaccard {avg_test_jac}")
-        writer.add_scalars("Loss/test", avg_test_loss, epoch)
-        writer.add_scalars("Jaccard/test", avg_test_jac, epoch)
-        writer.flush()
+    avg_test_loss = running_test_loss / len(test_dataloader)
+    avg_test_jac = running_test_jac / len(test_dataloader)
 
-        if avg_test_loss < best_test_loss:
-            best_test_loss = avg_test_loss
-            model_path = weights_path / f"model_{timestamp}_{epoch}"
-            torch.save(model.state_dict(), model_path)
+    print(f"Validation: loss: {avg_test_loss}, Jaccard {avg_test_jac}")
+    writer.add_scalars("Loss/test", avg_test_loss, epoch)
+    writer.add_scalars("Jaccard/test", avg_test_jac, epoch)
+    writer.flush()
 
-if __name__ == '__main__':
-    multiprocessing.freeze_support()
-    main(True)
-
-
+    if avg_test_loss < best_test_loss:
+        best_test_loss = avg_test_loss
+        model_path = weights_path / f"model_{timestamp}_{epoch}"
+        torch.save(model.state_dict(), model_path)

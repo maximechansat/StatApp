@@ -88,14 +88,16 @@ class SolarPanelDataset(Dataset):
             except ValueError:
                 return False
 
-        invalid_rows = self.dfs[2][~self.dfs[2]['edge_rank'].apply(is_float) | ~self.dfs[2]['long'].apply(is_float) | ~self.dfs[2]['lat'].apply(is_float)]
+        invalid_rows = self.dfs[2][
+            ~self.dfs[2]["edge_rank"].apply(is_float)
+            | ~self.dfs[2]["long"].apply(is_float)
+            | ~self.dfs[2]["lat"].apply(is_float)
+        ]
 
-        invalid_elt_names = invalid_rows['elt_name'].unique()
+        invalid_elt_names = invalid_rows["elt_name"].unique()
 
-        self.dfs[2] = self.dfs[2][~self.dfs[2]['elt_name'].isin(invalid_elt_names)]
-        self.dfs[1] = self.dfs[1][~self.dfs[1]['elt_name'].isin(invalid_elt_names)]
-        ####
-
+        self.dfs[2] = self.dfs[2][~self.dfs[2]["elt_name"].isin(invalid_elt_names)]
+        self.dfs[1] = self.dfs[1][~self.dfs[1]["elt_name"].isin(invalid_elt_names)]
 
         # Checking if the image names in both DataFrame and disk match
         img_names_df = self.dfs[0]["img_name"].astype(str)
@@ -104,7 +106,6 @@ class SolarPanelDataset(Dataset):
         unique_img_names = img_names_df.value_counts()[lambda x: x == 1].index
         final_img_names = valid_img_names & set(unique_img_names)
         self.dfs[0] = self.dfs[0][img_names_df.isin(final_img_names)].copy()
-        ####
 
         if self.type == "pan":
             self.dfs[0] = self.dfs[0][
@@ -185,4 +186,4 @@ class SolarPanelDataset(Dataset):
             return transformed["image"], transformed["mask"]
 
         if self.mode == "cls":
-            return self.transform(image=img), self.labels.get(img_number, 0)
+            return self.transform(image=img)["image"], self.labels.get(img_number, 0)
