@@ -23,45 +23,93 @@ def jaccard(prediction, target, epsilon=1e-07, threshold=0.5):
     return jaccard_index.mean()
 
 
-def train_one_epoch(
-    epoch_index,
-    tb_writer,
+def train(
     model,
     loss_fn,
+    metrics,
     optimizer,
-    train_dataloader,
+    epochs,
     device,
-    threshold,
+    train_dataloader,
+    test_dataloader,
+    model_output_path,
+    tb_writer,
+    chunk_size,
+    logging,
 ):
 
-    running_train_loss, running_train_jac = 0, 0
+    best_loss = float("inf")
 
-    for i, img_mask in enumerate(tqdm(train_dataloader, position=0, leave=True)):
-        img = img_mask[0].to(device)
-        mask = img_mask[1].squeeze().float().to(device)
+    for epoch in range(epochs):
+        print(f"Epoch {epoch + 1}:")
+        for training in (True, False):
+            dataloader = train_dataloader if training else test_dataloader
+            if training:
+                model.train()
+            else:
+                model.eval()
 
-        y_pred = model(img)["out"].squeeze()
+            torch.set_grad_enabled(training)
 
-        bin_pred = (y_pred >= threshold).long()
-        jac = jaccard(bin_pred, mask)
-        loss = loss_fn(y_pred, mask)
+            running_loss = 0
+            running_metrics = {metric: 0 for metric in metrics}
 
-        running_train_loss += loss.item()
-        running_train_jac += jac.item()
+            for i, data in enumerate(tqdm(dataloader, position=0, leave=True)):
+                img = data[0].to(device)
+                target = data[1].squeeze().float().to(device)
 
-        loss.backward()
-        optimizer.step()
-        optimizer.zero_grad(set_to_none=True)
+                pred = model(img)["out"].squeeze()
 
-        if i % 50 == 0:
-            last_loss = running_train_loss / 50
-            last_jac = running_train_jac / 50
-            print(f"Batch {i+1}, loss: {last_loss:>7f}, Jaccard: {last_jac:>5f}")
-            tb_x = epoch_index * len(train_dataloader) + i
-            tb_writer.add_scalar("Loss/train", last_loss, tb_x)
-            tb_writer.add_scalar("Jaccard/train", last_jac, tb_x)
-            running_train_loss = 0.0
-            running_train_jac = 0.0
+                loss = loss_fn(pred, target)
+                running_loss += loss.item()
+                for metric, value in metrics:
+                    running_metrics[metric] += metrics[metric](pred, target).item()
+
+                if training:
+                    loss.backward()
+                    optimizer.step()
+                    optimizer.zero_grad(set_to_none=True)
+
+                if (i + 1) % chunk_size == 0 and training and logging:
+                    avg_loss = running_loss / chunk_size
+                    avg_metrics = {
+                        metric: value / chunk_size for metric, value in running_metrics
+                    }
+                    log = f"Chunk {i // chunk_size}: loss: {avg_loss:>7f}"
+                    for metric, value in avg_metrics.items():
+                        log += f"; {metric}: {value:>7f}"
+                    print(log)
+
+                    index = epoch * len(train_dataloader) + i
+                    tb_writer.add_scalar("Loss/train", avg_loss, index)
+                    for metric, value in metrics.items():
+                        tb_writer.add_scalar(f"{metric}/train", value, index)
+
+                    running_loss = 0
+                    running_metrics = {metric: 0 for metric in metrics}
+
+                if not training:
+                    avg_loss = running_loss / len(dataloader)
+                    avg_metrics = {
+                        metric: value / len(dataloader)
+                        for metric, value in running_metrics
+                    }
+
+                    if logging:
+                        log = f"Test {i // chunk_size}: loss: {avg_loss:>7f}"
+                        for metric, value in avg_metrics.items():
+                            log += f"; {metric}: {value:>7f}"
+                        print(log)
+
+                    tb_writer.add_scalar("Loss/test", avg_loss, epoch)
+                    for metric, value in avg_metrics.items():
+                        tb_writer.add_scalar(f"{metric}/test", value, epoch)
+                        writer.flush()
+
+                    if avg_loss < best_loss:
+                        best_loss = avg_loss
+                        model_path = model_output_path / f"model_{timestamp}_{epoch}"
+                        torch.save(model.state_dict(), model_path)
 
 
 data_path = Path("../data")
@@ -112,43 +160,3 @@ optimizer = torch.optim.AdamW(
 
 timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
 writer = SummaryWriter(f"runs/solar_dataset_segmentation_{timestamp}")
-best_test_loss = float("inf")
-
-print("Training on: ", device)
-
-for epoch in range(epochs):
-    print(f"Epoch {epoch + 1}:")
-
-    model.train()
-    train_one_epoch(epoch, writer, model, loss_fn, optimizer, train_dataloader, device, threshold)
-    model.eval()
-
-    running_test_loss = 0
-    running_test_jac = 0
-
-    with torch.no_grad():
-        for idx, img_mask in enumerate(tqdm(test_dataloader, position=0, leave=True)):
-            img = img_mask[0].to(device)
-            mask = img_mask[1].squeeze().float().to(device)
-
-            y_pred = model(img)["out"].squeeze()
-
-            bin_pred = (y_pred >= threshold).long()
-            jac = jaccard(bin_pred, mask)
-            loss = loss_fn(y_pred, mask)
-
-            running_test_loss += loss.item()
-            running_test_jac += jac.item()
-
-    avg_test_loss = running_test_loss / len(test_dataloader)
-    avg_test_jac = running_test_jac / len(test_dataloader)
-
-    print(f"Validation: loss: {avg_test_loss}, Jaccard {avg_test_jac}")
-    writer.add_scalars("Loss/test", avg_test_loss, epoch)
-    writer.add_scalars("Jaccard/test", avg_test_jac, epoch)
-    writer.flush()
-
-    if avg_test_loss < best_test_loss:
-        best_test_loss = avg_test_loss
-        model_path = weights_path / f"model_{timestamp}_{epoch}"
-        torch.save(model.state_dict(), model_path)
