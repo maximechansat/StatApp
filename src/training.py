@@ -149,7 +149,6 @@ def train(
     for epoch in range(epochs):
         print(f"Epoch {epoch + 1}:")
         for training in (True, False):
-            training = False
             dataloader = train_dataloader if training else test_dataloader
             if training:
                 model.train()
@@ -186,7 +185,7 @@ def train(
                     avg_metrics = {
                         metric: value / chunk_size for metric, value in running_metrics
                     }
-                    log = f"Chunk {i // chunk_size}: loss: {avg_loss:>7f}"
+                    log = f"Chunk {i // chunk_size}: Loss: {avg_loss:>7f}"
                     for metric, value in avg_metrics.items():
                         log += f"; {metric}: {value:>7f}"
                     print(log)
@@ -199,26 +198,26 @@ def train(
                     running_loss = 0
                     running_metrics = {metric: 0 for metric in metrics}
 
-                if not training:
-                    avg_loss = running_loss / len(dataloader)
-                    avg_metrics = {}
-                    for metric, value in running_metrics.items():
-                        avg_metrics[metric] = value / len(dataloader)
-                    if logging:
-                        log = f"Test {i // chunk_size}: loss: {avg_loss:>7f}"
-                        for metric, value in avg_metrics.items():
-                            log += f"; {metric}: {value:>7f}"
-                        print(log)
-
-                    tb_writer.add_scalar("Loss/test", avg_loss, epoch)
+            if not training:
+                avg_loss = running_loss / len(dataloader)
+                avg_metrics = {}
+                for metric, value in running_metrics.items():
+                    avg_metrics[metric] = value / len(dataloader)
+                if logging:
+                    log = f"Test: Loss: {avg_loss:>7f}"
                     for metric, value in avg_metrics.items():
-                        tb_writer.add_scalar(f"{metric}/test", value, epoch)
-                    tb_writer.flush()
+                        log += f"; {metric}: {value:>7f}"
+                    print(log)
 
-                    if avg_loss < best_loss:
-                        best_loss = avg_loss
-                        model_path = model_output_path / f"model_{timestamp}_{epoch}"
-                        torch.save(model.state_dict(), model_path)
+                tb_writer.add_scalar("Loss/test", avg_loss, epoch)
+                for metric, value in avg_metrics.items():
+                    tb_writer.add_scalar(f"{metric}/test", value, epoch)
+                tb_writer.flush()
+
+                if avg_loss < best_loss:
+                    best_loss = avg_loss
+                    model_path = model_output_path / f"model_{epoch}.pth"
+                    torch.save(model.state_dict(), model_path)
 
 
 data_path = Path("../data")
@@ -238,7 +237,7 @@ xlsx_path = data_path / "solar_panel_data_madagascar.xlsx"
 img_path = data_path / "img"
 weights_path = data_path / "WEIGHTS"
 seg_weights_path = weights_path / f"model_bdappv_{mode}.pth"
-model_output_path = data_path / "runs"
+runs_path = data_path / "runs"
 
 torch.manual_seed(seed)
 
@@ -287,9 +286,10 @@ if mode == "cls":
         "Accuracy": composer(accuracy, threshold, epsilon),
     }
 
-timestamp = datetime.now().strftime("%H:%M:%S_%d/%m/%Y")
+timestamp = datetime.now().strftime("%H:%M:%S_%d-%m-%Y")
 model_name = "DeepLabV3" if mode == "cls" else "InceptionV3"
-tb_writer = SummaryWriter(model_output_path / f"{model_name}_{timestamp}")
+model_output_path = runs_path / f"{model_name}_{timestamp}"
+tb_writer = SummaryWriter(model_output_path)
 
 train(
     model,
