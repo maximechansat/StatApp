@@ -45,6 +45,22 @@ def accuracy(prediction, target):
     torch.sum(prediction == target) / len(prediction)
 
 
+def precision(prediction, target):
+    """
+    Compute the precision of the prediction, defined as TP / (TP + FP).
+
+    The tensors must contain only 0s and 1s and be of the same (but arbitrary) shape.
+
+    Arguments:
+        prediction (torch.Tensor): The prediction tensor.
+        target (torch.Tensor): The target (ie ground truth) tensor.
+
+    Returns:
+        torch.Tensor: The accuracy of the prediction.
+    """
+    torch.sum(prediction * target) / len(prediction)
+
+
 def recall(prediction, target, epsilon):
     """
     Compute the recall of the prediction, defined as TP / (TP + FN).
@@ -181,38 +197,31 @@ def train(
                     optimizer.zero_grad(set_to_none=True)
 
                 if (i + 1) % chunk_size == 0 and training and logging:
-                    avg_loss = running_loss / chunk_size
-                    avg_metrics = {
-                        metric: value / chunk_size for metric, value in running_metrics
-                    }
-                    log = f"Chunk {i // chunk_size}: Loss: {avg_loss:>7f}"
-                    for metric, value in avg_metrics.items():
-                        log += f"; {metric}: {value:>7f}"
-                    print(log)
-
                     index = epoch * len(train_dataloader) + i
+                    avg_loss = running_loss / chunk_size
+                    log = f"Chunk {i // chunk_size}: Loss: {avg_loss:>7f}"
                     tb_writer.add_scalar("Loss/train", avg_loss, index)
-                    for metric, value in metrics.items():
-                        tb_writer.add_scalar(f"{metric}/train", value, index)
+                    for metric, value in running_metrics.items():
+                        avg_value = value / chunk_size
+                        log += f"; {metric}: {avg_value:>7f}"
+                        tb_writer.add_scalar(f"{metric}/train", avg_value, index)
+                    print(log)
+                    tb_writer.flush()
 
                     running_loss = 0
                     running_metrics = {metric: 0 for metric in metrics}
 
             if not training:
                 avg_loss = running_loss / len(dataloader)
-                avg_metrics = {}
-                for metric, value in running_metrics.items():
-                    avg_metrics[metric] = value / len(dataloader)
                 if logging:
                     log = f"Test: Loss: {avg_loss:>7f}"
-                    for metric, value in avg_metrics.items():
-                        log += f"; {metric}: {value:>7f}"
+                    tb_writer.add_scalar("Loss/test", avg_loss, epoch)
+                    for metric, value in running_metrics.items():
+                        avg_value = value / len(dataloader)
+                        log += f"; {metric}: {avg_value:>7f}"
+                        tb_writer.add_scalar(f"{metric}/test", avg_value, epoch)
                     print(log)
-
-                tb_writer.add_scalar("Loss/test", avg_loss, epoch)
-                for metric, value in avg_metrics.items():
-                    tb_writer.add_scalar(f"{metric}/test", value, epoch)
-                tb_writer.flush()
+                    tb_writer.flush()
 
                 if avg_loss < best_loss:
                     best_loss = avg_loss
@@ -225,7 +234,7 @@ batch_size = 15
 lr = 0.0001
 epochs = 25
 seed = 1048596
-p = 0.3
+p_test = 0.2
 num_workers = 8
 epsilon = 1e-7
 threshold = 0.5
@@ -242,12 +251,20 @@ runs_path = data_path / "runs"
 torch.manual_seed(seed)
 
 if mode == "seg":
-    train_dataset = SolarPanelDataset(img_path, xlsx_path, "seg", "pan", True, p, seed)
-    test_dataset = SolarPanelDataset(img_path, xlsx_path, "seg", "pan", False, p, seed)
+    train_dataset = SolarPanelDataset(
+        img_path, xlsx_path, "seg", "pan", True, p_test, seed
+    )
+    test_dataset = SolarPanelDataset(
+        img_path, xlsx_path, "seg", "pan", False, p_test, seed
+    )
 
 elif mode == "cls":
-    train_dataset = SolarPanelDataset(img_path, xlsx_path, "cls", "all", True, p, seed)
-    test_dataset = SolarPanelDataset(img_path, xlsx_path, "cls", "all", False, p, seed)
+    train_dataset = SolarPanelDataset(
+        img_path, xlsx_path, "cls", "all", True, p_test, seed
+    )
+    test_dataset = SolarPanelDataset(
+        img_path, xlsx_path, "cls", "all", False, p_test, seed
+    )
 
 train_dataloader = DataLoader(
     train_dataset,
@@ -284,10 +301,12 @@ if mode == "cls":
     metrics = {
         "F1": composer(f1, threshold, epsilon),
         "Accuracy": composer(accuracy, threshold, epsilon),
+        "Precision": composer(precision, threshold, epsilon),
+        "Recall": composer(recall, threshold, epsilon),
     }
 
 timestamp = datetime.now().strftime("%H:%M:%S_%d-%m-%Y")
-model_name = "DeepLabV3" if mode == "cls" else "InceptionV3"
+model_name = "DeepLabV3" if mode == "seg" else "InceptionV3"
 model_output_path = runs_path / f"{model_name}_{timestamp}"
 tb_writer = SummaryWriter(model_output_path)
 
