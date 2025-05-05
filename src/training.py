@@ -6,143 +6,7 @@ from torch.utils.data import DataLoader
 from torch.utils.tensorboard import SummaryWriter
 from datetime import datetime
 from typing import Dict, Callable
-
-
-def convert(prediction: torch.Tensor, threshold: float, epsilon: float) -> torch.Tensor:
-    """
-    Converts logits to prediction.
-
-    Applies min-max scaling to the input tensor and consider positive the entries greater than a
-    given threshold.
-
-    Arguments:
-        prediction (torch.Tensor): The input tensor, containing floats.
-        threshold (float): A number between 0 and 1, defining the frontier between negative and
-        positve.
-        epsilon (float): A small number used to prevent divisions by zero.
-
-    Returns:
-        torch.Tensor: The prediction tensors, containing 0s and 1s.
-    """
-    min_max = torch.max(prediction) - torch.min(prediction)
-    min_max_prediction = (prediction - torch.min(prediction)) / (min_max + epsilon)
-    return (min_max_prediction >= threshold).long()
-
-
-def accuracy(prediction, target):
-    """
-    Compute the accuracy of the prediction, defined as (TP + TN) / (TP + FP).
-
-    The tensors must contain only 0s and 1s and be of the same (but arbitrary) shape.
-
-    Arguments:
-        prediction (torch.Tensor): The prediction tensor.
-        target (torch.Tensor): The target (ie ground truth) tensor.
-
-    Returns:
-        torch.Tensor: The accuracy of the prediction.
-    """
-    torch.sum(prediction == target) / len(prediction)
-
-
-def precision(prediction, target):
-    """
-    Compute the precision of the prediction, defined as TP / (TP + FP).
-
-    The tensors must contain only 0s and 1s and be of the same (but arbitrary) shape.
-
-    Arguments:
-        prediction (torch.Tensor): The prediction tensor.
-        target (torch.Tensor): The target (ie ground truth) tensor.
-
-    Returns:
-        torch.Tensor: The accuracy of the prediction.
-    """
-    torch.sum(prediction * target) / len(prediction)
-
-
-def recall(prediction, target, epsilon):
-    """
-    Compute the recall of the prediction, defined as TP / (TP + FN).
-
-    The tensors must contain only 0s and 1s and be of the same (but arbitrary) shape.
-
-    Arguments:
-        prediction (torch.Tensor): The prediction tensor.
-        target (torch.Tensor): The target (ie ground truth) tensor.
-        epsilon (float): A small number used to prevent divisions by zero.
-
-    Returns:
-        torch.Tensor: The recall of the prediction.
-    """
-    tp = torch.sum(prediction * target)
-    fn = torch.sum((1 - prediction) * target)
-    return tp / (tp + fn + epsilon)
-
-
-def f1(prediction, target, epsilon):
-    """
-    Compute the F1 of the prediction, defined as the harmonic mean of the accuracy and the recall.
-
-    The tensors must contain only 0s and 1s and be of the same (but arbitrary) shape.
-
-    Arguments:
-        prediction (torch.Tensor): The prediction tensor.
-        target (torch.Tensor): The target (ie ground truth) tensor.
-        epsilon (float): A small number used to prevent divisions by zero.
-
-    Returns:
-        torch.Tensor: The F1 of the prediction.
-    """
-    acc = accuracy(prediction, target)
-    rec = recall(prediction, target, epsilon)
-    return 2 * acc * rec / (acc + rec + epsilon)
-
-
-def jaccard(prediction, target, epsilon):
-    """
-    Compute the Jaccard index of the prediction, defined as the mean of the intersection divided by the union of the detected areas.
-
-    The tensors must contain only 0s and 1s and be of the same (but arbitrary) shape.
-
-    Arguments:
-        prediction (torch.Tensor): The prediction tensor.
-        target (torch.Tensor): The target (ie ground truth) tensor.
-        epsilon (float): A small number used to prevent divisions by zero.
-
-    Returns:
-        torch.Tensor: The Jaccard index of the prediction.
-    """
-    # Flatten (B, 1, H, W) → (B, H*W)
-    prediction = prediction.view(prediction.shape[0], -1)
-    target = target.view(target.shape[0], -1)
-
-    intersection = torch.sum(prediction * target, dim=1)
-    union = torch.sum(prediction, dim=1) + torch.sum(target, dim=1) - intersection
-
-    jaccard_index = (intersection) / (union + epsilon)
-    return jaccard_index.mean()
-
-
-def composer(metric, threshold, epsilon):
-    """
-    An utility function used to compose the conversion function (convert) with a given metric.
-
-
-    Arguments:
-        metric ((torch.Tensor, torch.Tensor) -> torch.Tensor): The metric.
-        threshold (float): A number between 0 and 1, defining the frontier between negative and
-        positve.
-        epsilon (float): A small number used to prevent divisions by zero.
-
-    Returns:
-        (torch.Tensor, torch.Tensor) -> torch.Tensor: The modified metric.
-    """
-
-    def converted_metric(prediction, target):
-        return metric(convert(prediction, threshold, epsilon), target, epsilon)
-
-    return converted_metric
+from metrics import *
 
 
 def train(
@@ -229,98 +93,99 @@ def train(
                     torch.save(model.state_dict(), model_path)
 
 
-data_path = Path("../data")
-batch_size = 15
-lr = 0.0001
-epochs = 25
-seed = 1048596
-p_test = 0.2
-num_workers = 8
-epsilon = 1e-7
-threshold = 0.5
-chunk_size = 50
+if __name__ == "__main__":
 
-mode = "seg"
+    data_path = Path("../data")
+    batch_size = 15
+    lr = 0.0001
+    epochs = 25
+    seed = 1048596
+    p_test = 0.2
+    num_workers = 8
+    epsilon = 1e-7
+    threshold = 0.5
+    chunk_size = 50
 
-xlsx_path = data_path / "solar_panel_data_madagascar.xlsx"
-img_path = data_path / "img"
-weights_path = data_path / "WEIGHTS"
-seg_weights_path = weights_path / f"model_bdappv_{mode}.pth"
-runs_path = data_path / "runs"
+    mode = "seg"
 
-torch.manual_seed(seed)
+    xlsx_path = data_path / "solar_panel_data_madagascar.xlsx"
+    img_path = data_path / "img"
+    weights_path = data_path / "WEIGHTS"
+    seg_weights_path = weights_path / f"model_bdappv_{mode}.pth"
+    runs_path = data_path / "runs"
 
-if mode == "seg":
-    train_dataset = SolarPanelDataset(
-        img_path, xlsx_path, "seg", "pan", True, p_test, seed
+    torch.manual_seed(seed)
+
+    if mode == "seg":
+        train_dataset = SolarPanelDataset(
+            img_path, xlsx_path, "seg", "pan", True, p_test, seed
+        )
+        test_dataset = SolarPanelDataset(
+            img_path, xlsx_path, "seg", "pan", False, p_test, seed
+        )
+
+    elif mode == "cls":
+        train_dataset = SolarPanelDataset(
+            img_path, xlsx_path, "cls", "all", True, p_test, seed
+        )
+        test_dataset = SolarPanelDataset(
+            img_path, xlsx_path, "cls", "all", False, p_test, seed
+        )
+
+    train_dataloader = DataLoader(
+        train_dataset,
+        batch_size=batch_size,
+        shuffle=True,
+        pin_memory=True,
+        num_workers=num_workers,
+        persistent_workers=True,
     )
-    test_dataset = SolarPanelDataset(
-        img_path, xlsx_path, "seg", "pan", False, p_test, seed
+    test_dataloader = DataLoader(
+        test_dataset,
+        batch_size=batch_size,
+        shuffle=True,
+        pin_memory=True,
+        num_workers=num_workers,
+        persistent_workers=True,
     )
 
-elif mode == "cls":
-    train_dataset = SolarPanelDataset(
-        img_path, xlsx_path, "cls", "all", True, p_test, seed
+    torch.backends.cudnn.benchmark = True
+    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    model = torch.load(seg_weights_path, weights_only=False, map_location=device)
+    model = torch.compile(model).to(device)
+
+    loss_fn = torch.nn.BCEWithLogitsLoss()
+    optimizer = torch.optim.AdamW(
+        filter(lambda p: p.requires_grad, model.parameters()), lr=lr
     )
-    test_dataset = SolarPanelDataset(
-        img_path, xlsx_path, "cls", "all", False, p_test, seed
+
+    if mode == "seg":
+        metrics = {"Jaccard": composer(jaccard, threshold, epsilon)}
+
+    if mode == "cls":
+        metrics = {
+            "F1": composer(f1, threshold, epsilon),
+            "Accuracy": composer(accuracy, threshold, epsilon),
+            "Precision": composer(precision, threshold, epsilon),
+            "Recall": composer(recall, threshold, epsilon),
+        }
+
+    timestamp = datetime.now().strftime("%H:%M:%S_%d-%m-%Y")
+    model_name = "DeepLabV3" if mode == "seg" else "InceptionV3"
+    model_output_path = runs_path / f"{model_name}_{timestamp}"
+    tb_writer = SummaryWriter(model_output_path)
+
+    train(
+        model,
+        loss_fn,
+        metrics,
+        optimizer,
+        epochs,
+        device,
+        train_dataloader,
+        test_dataloader,
+        model_output_path,
+        tb_writer,
+        chunk_size,
+        True,
     )
-
-train_dataloader = DataLoader(
-    train_dataset,
-    batch_size=batch_size,
-    shuffle=True,
-    pin_memory=True,
-    num_workers=num_workers,
-    persistent_workers=True,
-)
-test_dataloader = DataLoader(
-    test_dataset,
-    batch_size=batch_size,
-    shuffle=True,
-    pin_memory=True,
-    num_workers=num_workers,
-    persistent_workers=True,
-)
-
-torch.backends.cudnn.benchmark = True
-device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-model = torch.load(seg_weights_path, weights_only=False, map_location=device)
-model = torch.compile(model).to(device)
-
-loss_fn = torch.nn.BCEWithLogitsLoss()
-optimizer = torch.optim.AdamW(
-    filter(lambda p: p.requires_grad, model.parameters()), lr=lr
-)
-
-
-if mode == "seg":
-    metrics = {"Jaccard": composer(jaccard, threshold, epsilon)}
-
-if mode == "cls":
-    metrics = {
-        "F1": composer(f1, threshold, epsilon),
-        "Accuracy": composer(accuracy, threshold, epsilon),
-        "Precision": composer(precision, threshold, epsilon),
-        "Recall": composer(recall, threshold, epsilon),
-    }
-
-timestamp = datetime.now().strftime("%H:%M:%S_%d-%m-%Y")
-model_name = "DeepLabV3" if mode == "seg" else "InceptionV3"
-model_output_path = runs_path / f"{model_name}_{timestamp}"
-tb_writer = SummaryWriter(model_output_path)
-
-train(
-    model,
-    loss_fn,
-    metrics,
-    optimizer,
-    epochs,
-    device,
-    train_dataloader,
-    test_dataloader,
-    model_output_path,
-    tb_writer,
-    chunk_size,
-    True,
-)
