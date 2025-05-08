@@ -6,8 +6,7 @@ import matplotlib
 import numpy as np
 import cv2
 import albumentations as A
-from typing import Tuple
-import os
+from typing import Tuple, List
 
 
 class SolarPanelDataset(Dataset):
@@ -19,52 +18,68 @@ class SolarPanelDataset(Dataset):
         self,
         img_path: pathlib.Path,
         xlsx_path: pathlib.Path,
-        mode: str,
+        task: str,
         type: str,
-        train: bool,
-        p_test: float,
+        mode: str,
+        probs: List[float],
         seed: int,
+        threshold: float = 0,
     ) -> None:
         """
-        Args:
+        Arguments:
             img_path (pathlib.Path): path of the directory containing the images.
             xlsx_path (pathlib.Path): path of the xlsx file containing the metadatas.
-            mode (str): either "cls" (for classification) or "seg" (for segmentation).
-            Along with the images, in classiciation mode, the Dataset will return labels and in segmentation masks.
+            task (str): either "cls" (for classification) or "seg" (for segmentation).
+            Along with the images, in classiciation mode, the Dataset will return labels and in
+            segmentation masks.
             type (str): either "boil" (for boiler), "pan" (for solar panel) or "all".
             The dataset will only return the image containing elements of the type specified.
-            p (float): proportion of images allocated to the test set
+            threshold (float): proportion of pixels covered by the mask so that the image is
+            considered positive. Only useful in classification mode.
+            probs (List[float]): proportion of images allocated respectively to the training set,
+            the test set and the validation set. May not sum to 1.
+            seed (int): random seed use for allocating images to sets and data augmentations.
 
         Note: the class will mostly be instanciated with mode="seg", type="pan" and mode="cls", type="all".
         """
 
         self.img_path = img_path
         self.xlsx_path = xlsx_path
-        self.mode = mode
+        self.task = task
         self.type = type
         self.dfs = pd.read_excel(xlsx_path, sheet_name=[0, 1, 2])
         self.labels = {}
         self.seed = seed
-        self.train = train
-        self.p = p_test
-        self.transform = A.Compose(
-            [
-                A.SmallestMaxSize(max_size_hw=(500, 500)),
-                A.CropNonEmptyMaskIfExists(height=500, width=500),
-                A.RandomCrop(height=299, width=299),
-                A.Normalize(),
-                A.ToTensorV2(),
-            ],
-            seed=self.seed,
-        )
 
-        if self.train:
+        if mode == "train":
+            self.mode = 0
+        if mode == "test":
+            self.mode = 1
+        if mode == "val":
+            self.mode = 2
+
+        self.probs = probs
+
+        if mode == "train":
             self.transform = A.Compose(
                 [
                     A.SmallestMaxSize(max_size_hw=(500, 500)),
                     A.CropNonEmptyMaskIfExists(height=500, width=500),
                     A.RandomCrop(height=299, width=299),
+                    A.GaussNoise(),
                     A.D4(),
+                    A.Normalize(),
+                    A.ToTensorV2(),
+                ],
+                seed=self.seed,
+            )
+
+        if mode in ["test", "val"]:
+            self.transform = A.Compose(
+                [
+                    A.SmallestMaxSize(max_size_hw=(500, 500)),
+                    A.CropNonEmptyMaskIfExists(height=500, width=500),
+                    A.CenterCrop(height=299, width=299),
                     A.Normalize(),
                     A.ToTensorV2(),
                 ],
@@ -80,33 +95,6 @@ class SolarPanelDataset(Dataset):
         In segmentation mode, a white pixel denotes the presence of a solar panel and a black one its absence.
         """
 
-        # Checking if all the masks are well defined
-        def is_float(value):
-            try:
-                float(value)
-                return True
-            except ValueError:
-                return False
-
-        invalid_rows = self.dfs[2][
-            ~self.dfs[2]["edge_rank"].apply(is_float)
-            | ~self.dfs[2]["long"].apply(is_float)
-            | ~self.dfs[2]["lat"].apply(is_float)
-        ]
-
-        invalid_elt_names = invalid_rows["elt_name"].unique()
-
-        self.dfs[2] = self.dfs[2][~self.dfs[2]["elt_name"].isin(invalid_elt_names)]
-        self.dfs[1] = self.dfs[1][~self.dfs[1]["elt_name"].isin(invalid_elt_names)]
-
-        # Checking if the image names in both DataFrame and disk match
-        img_names_df = self.dfs[0]["img_name"].astype(str)
-        img_names_disk = {f.split(".")[0] for f in os.listdir(self.img_path)}
-        valid_img_names = set(img_names_df) & img_names_disk
-        unique_img_names = img_names_df.value_counts()[lambda x: x == 1].index
-        final_img_names = valid_img_names & set(unique_img_names)
-        self.dfs[0] = self.dfs[0][img_names_df.isin(final_img_names)].copy()
-
         if self.type == "pan":
             self.dfs[0] = self.dfs[0][
                 self.dfs[0]["type1"].isin(("pan", "mix", "solar_park"))
@@ -121,16 +109,19 @@ class SolarPanelDataset(Dataset):
                 self.dfs[1]["img_name"].isin(self.dfs[0]["img_name"])
             ]
 
-        self.labels = {}
+        extended_probs = self.probs + [1 - sum(self.probs)]
+        previous_state = torch.get_rng_state()
+        torch.manual_seed(self.seed)
+        samples = torch.distributions.categorical.Categorical(extended_probs).sample_n(
+            len(self.dfs[0])
+        )
+        torch.manual_seed(previous_state)
+        mask = samples == self.mode
 
-        rng = np.random.default_rng(seed=self.seed)
-        mask = rng.binomial(1, self.p, len(self.dfs[0])) >= 1
-        if self.train:
-            mask = np.logical_not(mask)
         self.dfs[0] = self.dfs[0].loc[mask]
         self.dfs[1] = self.dfs[1][self.dfs[1]["img_name"].isin(self.dfs[0]["img_name"])]
 
-        if self.mode == "seg":
+        if self.task == "seg":
             solar_elt_names = set(
                 self.dfs[1][self.dfs[1]["type1"] == "pan"]["elt_name"]
             )
@@ -141,7 +132,7 @@ class SolarPanelDataset(Dataset):
                         self.labels[img_name] = []
                     self.labels[img_name].append([*zip(value["lat"], value["long"])])
 
-        if self.mode == "cls":
+        if self.task == "cls":
             solar_elt_names = set(
                 self.dfs[1][self.dfs[1]["type1"] == "pan"]["elt_name"]
             )
@@ -167,23 +158,24 @@ class SolarPanelDataset(Dataset):
         img = cv2.imread(self.img_path / (img_name + ".jpg"))
         img = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
 
-        if self.mode == "seg":
-            mask = np.zeros((img.shape[0], img.shape[1]), dtype=np.uint8)
-            for vertices in self.labels.get(img_number, []):
-                x = np.linspace(0, img.shape[0] - 1, img.shape[0])
-                y = np.linspace(0, img.shape[1] - 1, img.shape[1])
-                xv, yv = np.meshgrid(x, y)
-                points = np.vstack((xv.ravel(), yv.ravel())).T
+        mask = np.zeros((img.shape[0], img.shape[1]), dtype=np.uint8)
+        for vertices in self.labels.get(img_number, []):
+            x = np.linspace(0, img.shape[0] - 1, img.shape[0])
+            y = np.linspace(0, img.shape[1] - 1, img.shape[1])
+            xv, yv = np.meshgrid(x, y)
+            points = np.vstack((xv.ravel(), yv.ravel())).T
 
-                polygon_path = matplotlib.path.Path(vertices)
-                submask = (
-                    polygon_path.contains_points(points)
-                    .reshape(img.shape[1], img.shape[0])
-                    .T
-                )
-                mask = np.maximum(mask, submask)
-            transformed = self.transform(image=img, mask=mask)
-            return transformed["image"], transformed["mask"]
+            polygon_path = matplotlib.path.Path(vertices)
+            submask = (
+                polygon_path.contains_points(points)
+                .reshape(img.shape[1], img.shape[0])
+                .T
+            )
+            mask = np.maximum(mask, submask)
+        augmented = self.transform(image=img, mask=mask)
+        img, mask = augmented["image"], augmented["mask"]
 
-        if self.mode == "cls":
-            return self.transform(image=img)["image"], self.labels.get(img_number, 0)
+        if self.task == "seg":
+            return img, mask
+
+        return img, torch.sum(mask) / torch.prod(mask.shape) > self.threhold

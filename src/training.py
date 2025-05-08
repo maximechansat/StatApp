@@ -90,7 +90,7 @@ def train(
                 if avg_loss < best_loss:
                     best_loss = avg_loss
                     model_path = model_output_path / f"model_{epoch}.pth"
-                    torch.save(model.state_dict(), model_path)
+                    torch.save(model, model_path)
 
 
 if __name__ == "__main__":
@@ -100,10 +100,12 @@ if __name__ == "__main__":
     lr = 0.0001
     epochs = 25
     seed = 1048596
-    p_test = 0.2
+    probs = [0.8, 0.1, 0.1]
     num_workers = 8
     epsilon = 1e-7
-    threshold = 0.5
+    prediction_threshold = 0.5
+    data_threshold = 0.1
+    
     chunk_size = 50
 
     mode = "seg"
@@ -118,18 +120,18 @@ if __name__ == "__main__":
 
     if mode == "seg":
         train_dataset = SolarPanelDataset(
-            img_path, xlsx_path, "seg", "pan", True, p_test, seed
+            img_path, xlsx_path, "seg", "pan", "train", probs, seed
         )
         test_dataset = SolarPanelDataset(
-            img_path, xlsx_path, "seg", "pan", False, p_test, seed
+            img_path, xlsx_path, "seg", "pan", "test", probs, seed
         )
 
     elif mode == "cls":
         train_dataset = SolarPanelDataset(
-            img_path, xlsx_path, "cls", "all", True, p_test, seed
+            img_path, xlsx_path, "cls", "all", "train", probs, seed, data_threshold
         )
         test_dataset = SolarPanelDataset(
-            img_path, xlsx_path, "cls", "all", False, p_test, seed
+            img_path, xlsx_path, "cls", "all", "test", probs, seed, data_threshold
         )
 
     train_dataloader = DataLoader(
@@ -140,6 +142,7 @@ if __name__ == "__main__":
         num_workers=num_workers,
         persistent_workers=True,
     )
+
     test_dataloader = DataLoader(
         test_dataset,
         batch_size=batch_size,
@@ -160,14 +163,14 @@ if __name__ == "__main__":
     )
 
     if mode == "seg":
-        metrics = {"Jaccard": composer(jaccard, threshold, epsilon)}
+        metrics = {"Jaccard": composer(jaccard, prediction_threshold, epsilon)}
 
     if mode == "cls":
         metrics = {
-            "F1": composer(f1, threshold, epsilon),
-            "Accuracy": composer(accuracy, threshold, epsilon),
-            "Precision": composer(precision, threshold, epsilon),
-            "Recall": composer(recall, threshold, epsilon),
+            "F1": composer(f1, prediction_threshold, epsilon),
+            "Accuracy": composer(accuracy, prediction_threshold, epsilon),
+            "Precision": composer(precision, prediction_threshold, epsilon),
+            "Recall": composer(recall, prediction_threshold, epsilon),
         }
 
     timestamp = datetime.now().strftime("%H:%M:%S_%d-%m-%Y")
