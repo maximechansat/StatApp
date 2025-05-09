@@ -78,7 +78,7 @@ def train(
                     optimizer.step()
                     optimizer.zero_grad(set_to_none=True)
 
-                if (i + 1) % chunk_size == 0 and training and logging:
+                if training and logging and (i + 1) % chunk_size == 0:
                     avg_loss = running_loss / chunk_size
                     log = f"Chunk {i // chunk_size}: Loss: {avg_loss:>7f}"
                     tb_writer.add_scalar("Loss/train", avg_loss, index)
@@ -122,7 +122,7 @@ def train(
 if __name__ == "__main__":
 
     data_path = Path("../data")
-    batch_size = 128
+    batch_size = 16
     lr = 0.0001
     epochs = 25
     seed = 1048596
@@ -132,7 +132,7 @@ if __name__ == "__main__":
     prediction_threshold = 0.5
     data_threshold = 0.01
 
-    chunk_size = 10
+    chunk_size = 50
 
     mode = "seg"
 

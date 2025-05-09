@@ -133,10 +133,5 @@ class JaccardWithLogitLoss(torch.nn.Module):
 
     def forward(self, prediction, target, epsilon=0):
 
-        prediction = torch.functional.sigmoid(prediction)
-        prediction = prediction.view(prediction.shape[0], -1)
-        target = target.view(target.shape[0], -1)
-        intersection = torch.sum(prediction * target, dim=1)
-        union = torch.sum(prediction, dim=1) + torch.sum(target, dim=1) - intersection
-        jaccard_index = 1 - (intersection) / (union + epsilon)
-        return torch.sum(jaccard_index)
+        prediction = torch.nn.functional.sigmoid(prediction)
+        return 1 - jaccard(prediction, target, epsilon)
