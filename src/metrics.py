@@ -2,7 +2,7 @@ import torch
 from typing import Dict, Callable
 
 
-def convert(prediction: torch.Tensor, threshold: float, epsilon: float) -> torch.Tensor:
+def linear_activation(prediction: torch.Tensor, epsilon: float = 1e-5) -> torch.Tensor:
     """
     Converts logits to prediction.
 
@@ -20,7 +20,7 @@ def convert(prediction: torch.Tensor, threshold: float, epsilon: float) -> torch
     """
     min_max = torch.max(prediction) - torch.min(prediction)
     min_max_prediction = (prediction - torch.min(prediction)) / (min_max + epsilon)
-    return (min_max_prediction >= threshold).long()
+    return min_max_prediction
 
 
 def accuracy(prediction, target):
@@ -36,7 +36,11 @@ def accuracy(prediction, target):
     Returns:
         torch.Tensor: The accuracy of the prediction.
     """
-    torch.sum(prediction == target) / len(prediction)
+    prediction = prediction.view(prediction.shape[0], -1)
+    target = target.view(target.shape[0], -1)
+    tp = torch.sum(prediction * target, dim=1)
+    tn = torch.sum((1 - prediction) * (1 - target), dim=1)
+    return ((tp + tn) / prediction.shape[1]).mean()
 
 
 def precision(prediction, target):
@@ -52,10 +56,13 @@ def precision(prediction, target):
     Returns:
         torch.Tensor: The accuracy of the prediction.
     """
-    torch.sum(prediction * target) / len(prediction)
+    prediction = prediction.view(prediction.shape[0], -1)
+    target = target.view(target.shape[0], -1)
+    tp = torch.sum(prediction * target, dim=1)
+    return (tp / prediction.shape[1]).mean()
 
 
-def recall(prediction, target, epsilon):
+def recall(prediction, target, epsilon=1e-5):
     """
     Compute the recall of the prediction, defined as TP / (TP + FN).
 
@@ -69,12 +76,14 @@ def recall(prediction, target, epsilon):
     Returns:
         torch.Tensor: The recall of the prediction.
     """
-    tp = torch.sum(prediction * target)
-    fn = torch.sum((1 - prediction) * target)
-    return tp / (tp + fn + epsilon)
+    prediction = prediction.view(prediction.shape[0], -1)
+    target = target.view(target.shape[0], -1)
+    tp = torch.sum(prediction * target, dim=1)
+    fn = torch.sum((1 - prediction) * target, dim=1)
+    return (tp / (tp + fn + epsilon)).mean()
 
 
-def f1(prediction, target, epsilon):
+def f1(prediction, target, epsilon=1e-5):
     """
     Compute the F1 of the prediction, defined as the harmonic mean of the accuracy and the recall.
 
@@ -93,7 +102,7 @@ def f1(prediction, target, epsilon):
     return 2 * acc * rec / (acc + rec + epsilon)
 
 
-def jaccard(prediction, target, epsilon):
+def jaccard(prediction, target, epsilon=1e-5):
     """
     Compute the Jaccard index of the prediction, defined as the mean of the intersection divided by the union of the detected areas.
 
@@ -118,22 +127,16 @@ def jaccard(prediction, target, epsilon):
     return jaccard_index.mean()
 
 
-def composer(metric, threshold, epsilon):
-    """
-    An utility function used to compose the conversion function (convert) with a given metric.
+class JaccardWithLogitLoss(torch.nn.Module):
+    def __init__(self, weight=None, size_average=True):
+        super(JaccardWithLogitLoss, self).__init__()
 
+    def forward(self, prediction, target, epsilon=0):
 
-    Arguments:
-        metric ((torch.Tensor, torch.Tensor) -> torch.Tensor): The metric.
-        threshold (float): A number between 0 and 1, defining the frontier between negative and
-        positve.
-        epsilon (float): A small number used to prevent divisions by zero.
-
-    Returns:
-        (torch.Tensor, torch.Tensor) -> torch.Tensor: The modified metric.
-    """
-
-    def converted_metric(prediction, target):
-        return metric(convert(prediction, threshold, epsilon), target, epsilon)
-
-    return converted_metric
+        prediction = torch.functional.sigmoid(prediction)
+        prediction = prediction.view(prediction.shape[0], -1)
+        target = target.view(target.shape[0], -1)
+        intersection = torch.sum(prediction * target, dim=1)
+        union = torch.sum(prediction, dim=1) + torch.sum(target, dim=1) - intersection
+        jaccard_index = 1 - (intersection) / (union + epsilon)
+        return torch.sum(jaccard_index)

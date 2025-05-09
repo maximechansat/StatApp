@@ -48,6 +48,7 @@ class SolarPanelDataset(Dataset):
         self.task = task
         self.type = type
         self.dfs = pd.read_excel(xlsx_path, sheet_name=[0, 1, 2])
+        self.threshold = threshold
         self.labels = {}
         self.seed = seed
 
@@ -109,37 +110,28 @@ class SolarPanelDataset(Dataset):
                 self.dfs[1]["img_name"].isin(self.dfs[0]["img_name"])
             ]
 
-        extended_probs = self.probs + [1 - sum(self.probs)]
+        extended_probs = torch.Tensor(self.probs + [1 - sum(self.probs)])
         previous_state = torch.get_rng_state()
         torch.manual_seed(self.seed)
-        samples = torch.distributions.categorical.Categorical(extended_probs).sample_n(
-            len(self.dfs[0])
+        samples = torch.distributions.categorical.Categorical(extended_probs).sample(
+            (len(self.dfs[0]),)
         )
-        torch.manual_seed(previous_state)
-        mask = samples == self.mode
+        torch.set_rng_state(previous_state)
+        mask = (np.array(samples) == self.mode)
 
         self.dfs[0] = self.dfs[0].loc[mask]
         self.dfs[1] = self.dfs[1][self.dfs[1]["img_name"].isin(self.dfs[0]["img_name"])]
 
-        if self.task == "seg":
-            solar_elt_names = set(
-                self.dfs[1][self.dfs[1]["type1"] == "pan"]["elt_name"]
-            )
-            for elt_name, value in self.dfs[2].groupby("elt_name"):
-                if elt_name in solar_elt_names:
-                    img_name = int(elt_name.split("z")[0])
-                    if img_name not in self.labels:
-                        self.labels[img_name] = []
-                    self.labels[img_name].append([*zip(value["lat"], value["long"])])
+        solar_elt_names = set(
+            self.dfs[1][self.dfs[1]["type1"] == "pan"]["elt_name"]
+        )
 
-        if self.task == "cls":
-            solar_elt_names = set(
-                self.dfs[1][self.dfs[1]["type1"] == "pan"]["elt_name"]
-            )
-            for elt_name, value in self.dfs[2].groupby("elt_name"):
-                if elt_name in solar_elt_names:
-                    img_name = int(elt_name.split("z")[0])
-                    self.labels[img_name] = 1
+        for elt_name, value in self.dfs[2].groupby("elt_name"):
+            if elt_name in solar_elt_names:
+                img_name = int(elt_name.split("z")[0])
+                if img_name not in self.labels:
+                    self.labels[img_name] = []
+                self.labels[img_name].append([*zip(value["lat"], value["long"])])
 
     def __len__(self) -> int:
         """
@@ -159,6 +151,7 @@ class SolarPanelDataset(Dataset):
         img = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
 
         mask = np.zeros((img.shape[0], img.shape[1]), dtype=np.uint8)
+
         for vertices in self.labels.get(img_number, []):
             x = np.linspace(0, img.shape[0] - 1, img.shape[0])
             y = np.linspace(0, img.shape[1] - 1, img.shape[1])
@@ -178,4 +171,4 @@ class SolarPanelDataset(Dataset):
         if self.task == "seg":
             return img, mask
 
-        return img, torch.sum(mask) / torch.prod(mask.shape) > self.threhold
+        return img, torch.sum(mask) / torch.prod(torch.Tensor(mask.shape)) > self.threshold
