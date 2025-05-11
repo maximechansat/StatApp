@@ -60,9 +60,9 @@ def train(
                 if mode == "seg":
                     pred = pred["out"]
                 if mode == "cls" and training:
-                    pred = pred.logits[:, 1]
+                    pred = pred.logits[:, 0]
                 if mode == "cls" and not training:
-                    pred = pred[:, 1]
+                    pred = pred[:, 0]
                 pred = pred.squeeze()
                 detached_pred = activation(pred.detach())
 
@@ -134,7 +134,7 @@ if __name__ == "__main__":
 
     chunk_size = 50
 
-    mode = "seg"
+    mode = "cls"
 
     xlsx_path = data_path / "solar_panel_data_madagascar.xlsx"
     img_path = data_path / "img"
@@ -183,13 +183,18 @@ if __name__ == "__main__":
     model = torch.load(weights_path, weights_only=False, map_location=device)
     model = torch.compile(model).to(device)
 
-    loss_fn = metrics.JaccardWithLogitLoss()
+    loss_fn = torch.nn.BCEWithLogitsLoss()
     optimizer = torch.optim.AdamW(
         filter(lambda p: p.requires_grad, model.parameters()), lr=lr
     )
 
-    def activation(x):
-        return (torch.nn.functional.sigmoid(x) >= prediction_threshold).long()
+    if mode == "cls":
+        def activation(x):
+            return (torch.nn.functional.sigmoid(x) < prediction_threshold).long()
+    
+    if mode == "seg":
+        def activation(x):
+            return (torch.nn.functional.sigmoid(x) > prediction_threshold).long()
 
     if mode == "seg":
         metrics_dict = {"Jaccard": metrics.jaccard}
