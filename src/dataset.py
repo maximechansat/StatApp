@@ -171,4 +171,4 @@ class SolarPanelDataset(Dataset):
         if self.task == "seg":
             return img, mask
 
-        return img, torch.sum(mask) / torch.prod(torch.Tensor(mask.shape)) > self.threshold
+        return img, (((torch.sum(mask)) / (299**2)) > self.threshold).long()

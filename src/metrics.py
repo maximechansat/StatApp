@@ -97,9 +97,9 @@ def f1(prediction, target, epsilon=1e-5):
     Returns:
         torch.Tensor: The F1 of the prediction.
     """
-    acc = accuracy(prediction, target)
+    pre = precision(prediction, target)
     rec = recall(prediction, target, epsilon)
-    return 2 * acc * rec / (acc + rec + epsilon)
+    return 2 * pre * rec / (pre + rec + epsilon)
 
 
 def jaccard(prediction, target, epsilon=1e-5):

@@ -60,9 +60,9 @@ def train(
                 if mode == "seg":
                     pred = pred["out"]
                 if mode == "cls" and training:
-                    pred = pred.logits[:, 0]
+                    pred = pred.logits[:, 1]
                 if mode == "cls" and not training:
-                    pred = pred[:, 0]
+                    pred = pred[:, 1]
                 pred = pred.squeeze()
                 detached_pred = activation(pred.detach())
 
@@ -130,7 +130,7 @@ if __name__ == "__main__":
     num_workers = 8
     epsilon = 1e-7
     prediction_threshold = 0.5
-    data_threshold = 0.01
+    data_threshold = 0.005
 
     chunk_size = 50
 
@@ -181,20 +181,16 @@ if __name__ == "__main__":
     torch.backends.cudnn.benchmark = True
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     model = torch.load(weights_path, weights_only=False, map_location=device)
-    model = torch.compile(model).to(device)
+
+    model = torch.compile(model)
 
     loss_fn = torch.nn.BCEWithLogitsLoss()
     optimizer = torch.optim.AdamW(
         filter(lambda p: p.requires_grad, model.parameters()), lr=lr
     )
 
-    if mode == "cls":
-        def activation(x):
-            return (torch.nn.functional.sigmoid(x) < prediction_threshold).long()
-    
-    if mode == "seg":
-        def activation(x):
-            return (torch.nn.functional.sigmoid(x) > prediction_threshold).long()
+    def activation(x):
+        return (torch.nn.functional.sigmoid(x) > prediction_threshold).long()
 
     if mode == "seg":
         metrics_dict = {"Jaccard": metrics.jaccard}
