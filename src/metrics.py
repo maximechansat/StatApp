@@ -1,5 +1,7 @@
 import torch
 from typing import Dict, Callable
+import cv2
+import numpy as np
 
 
 def linear_activation(prediction: torch.Tensor, epsilon: float = 1e-5) -> torch.Tensor:
@@ -125,6 +127,17 @@ def jaccard(prediction, target, epsilon=1e-5):
 
     jaccard_index = (intersection) / (union + epsilon)
     return jaccard_index.mean()
+
+
+def count_connected_components(masks, kernel_size=(10, 10)):
+    np_masks = masks.long().numpy().astype("uint8")
+    kernel = np.ones(kernel_size, np.uint8)
+    count = 0
+    for i in range(np_masks.shape[0]):
+        opened_mask = cv2.morphologyEx(np_masks[i], cv2.MORPH_OPEN, kernel)
+        num_labels, _, _, _ = cv2.connectedComponentsWithStats(opened_mask, connectivity=4)
+        count += num_labels
+    return count
 
 
 class JaccardWithLogitLoss(torch.nn.Module):
