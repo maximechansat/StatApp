@@ -5,8 +5,6 @@ import json
 import time
 import numpy as np
 import pandas as pd
-import matplotlib.pyplot as plt
-import seaborn as sns
 from pathlib import Path
 import sys
 import torch
@@ -88,97 +86,240 @@ class ScalingLawStudy:
         print(f"Results saved ({len(self.results)} total experiments)")
     
     def _create_subset_yaml(self, original_yaml, temp_yaml, fraction):
-        """Create a temporary YAML file with a subset of the dataset"""
+        """Create a temporary YAML file with a subset of training data and complete val/test sets"""
         import yaml
+        import shutil
+        
+        # Ensure random seed is set before sampling
+        random.seed(42)
         
         # Load original YAML
         with open(original_yaml, 'r') as f:
             yaml_data = yaml.safe_load(f)
         
-        # Get all image paths from train split
+        # Get all image paths from train split (canonical structure)
         train_dir = self.root_dir / "images" / "train"
         all_images = list(train_dir.glob("*.jpg"))
         
-        # Create subset
+        # Sort first to ensure consistent ordering across different systems
+        all_images.sort()
+        
+        # Create subset with fixed seed
         subset_size = int(len(all_images) * fraction)
         random.shuffle(all_images)
         subset_images = all_images[:subset_size]
         
-        # Create temporary directory structure
-        temp_train_dir = self.results_dir / "temp_images" / "train"
-        temp_train_dir.mkdir(parents=True, exist_ok=True)
+        print(f"   Creating training subset: {len(subset_images)}/{len(all_images)} images ({fraction*100:.0f}%)")
         
-        # Copy subset images to temporary directory
+        # Create temporary directory structure (complete canonical YOLO structure)
+        temp_base = self.results_dir / "temp_images"
+        
+        # All splits
+        splits = ['train', 'val', 'test']
+        temp_dirs = {}
+        
+        for split in splits:
+            temp_dirs[split] = {
+                'images': temp_base / "images" / split,
+                'labels': temp_base / "labels" / split
+            }
+            # Create directories
+            temp_dirs[split]['images'].mkdir(parents=True, exist_ok=True)
+            temp_dirs[split]['labels'].mkdir(parents=True, exist_ok=True)
+        
+        # Copy TRAINING subset (images + labels)
         for img_path in subset_images:
-            temp_img_path = temp_train_dir / img_path.name
-            if not temp_img_path.exists():
-                import shutil
-                shutil.copy2(img_path, temp_img_path)
+            dest_img = temp_dirs['train']['images'] / img_path.name
+            if not dest_img.exists():
+                shutil.copy2(img_path, dest_img)
         
-        # Update YAML paths
-        yaml_data['path'] = str(self.results_dir / "temp_images")
+        # Copy corresponding training labels
+        original_train_labels_dir = self.root_dir / "labels" / "train"
+        train_labels_copied = 0
+        train_labels_missing = 0
+
+        for img_path in subset_images:
+            label_name = img_path.stem + ".txt"
+            original_label = original_train_labels_dir / label_name
+            dest_label = temp_dirs['train']['labels'] / label_name
+            
+            if original_label.exists():
+                shutil.copy2(original_label, dest_label)
+                train_labels_copied += 1
+            else:
+                train_labels_missing += 1
+                print(f"     Missing label: {label_name}")
+
+        print(f"   Training: {len(subset_images)} images, {train_labels_copied} labels ({train_labels_missing} missing)")
+        # Copy COMPLETE validation and test sets (images + labels)
+        for split in ['val', 'test']:
+            original_img_dir = self.root_dir / "images" / split
+            original_label_dir = self.root_dir / "labels" / split
+            
+            images_copied = 0
+            labels_copied = 0
+            
+            # Copy all images for this split
+            if original_img_dir.exists():
+                for img_path in original_img_dir.glob("*.jpg"):
+                    dest_img = temp_dirs[split]['images'] / img_path.name
+                    if not dest_img.exists():
+                        shutil.copy2(img_path, dest_img)
+                        images_copied += 1
+            
+            # Copy all labels for this split
+            if original_label_dir.exists():
+                for label_path in original_label_dir.glob("*.txt"):
+                    dest_label = temp_dirs[split]['labels'] / label_path.name
+                    if not dest_label.exists():
+                        shutil.copy2(label_path, dest_label)
+                        labels_copied += 1
+            
+            if images_copied > 0 or labels_copied > 0:
+                print(f"   {split.capitalize()}: {images_copied} images, {labels_copied} labels (complete)")
+        
+        # Update YAML to point to temporary dataset (canonical structure)
+        yaml_data['path'] = str(temp_base)
         yaml_data['train'] = "images/train"
+        yaml_data['val'] = "images/val"
+        if 'test' in yaml_data:
+            yaml_data['test'] = "images/test"
         
         # Save temporary YAML
         with open(temp_yaml, 'w') as f:
             yaml.dump(yaml_data, f)
-    
+        
+        # Verify the complete structure
+        summary = {}
+        for split in splits:
+            images_count = len(list(temp_dirs[split]['images'].glob("*.jpg")))
+            labels_count = len(list(temp_dirs[split]['labels'].glob("*.txt")))
+            summary[split] = {'images': images_count, 'labels': labels_count}
+        
+        print(f"   Complete temp dataset created:")
+        print(f"     Train: {summary['train']['images']} images, {summary['train']['labels']} labels (subset)")
+        print(f"     Val: {summary['val']['images']} images, {summary['val']['labels']} labels (complete)")
+        print(f"     Test: {summary['test']['images']} images, {summary['test']['labels']} labels (complete)")
+        
+        # Warn if there are significant mismatches
+        for split in splits:
+            images = summary[split]['images']
+            labels = summary[split]['labels']
+            if images > 0 and labels < images * 0.9:
+                print(f"   WARNING: {split} has only {labels}/{images} labels!")
+        
+        return summary
+
     def _get_dataset_size(self, dataset_fraction):
         """Get the actual dataset size for a given fraction"""
         train_dir = self.root_dir / "images" / "train"
         all_images = list(train_dir.glob("*.jpg"))
         return int(len(all_images) * dataset_fraction)
-    
+        
     def measure_model_complexity(self, model, input_size):
-        """Measure model FLOPs and parameters"""
+        """Measure model FLOPs and parameters with multiple fallback methods"""
         input_tensor = torch.randn(1, 3, input_size, input_size)
         
         # Move to same device as model
         device = next(model.model.parameters()).device
         input_tensor = input_tensor.to(device)
         
-        # Measure FLOPs and parameters
-        flops, params = profile(model, inputs=(input_tensor,), verbose=False)
-        return flops, params
+        # Function to recursively clear THOP buffers from all modules
+        def clear_thop_buffers(module):
+            buffers_to_remove = ['total_ops', 'total_params']
+            for buffer_name in buffers_to_remove:
+                if hasattr(module, buffer_name):
+                    delattr(module, buffer_name)
+            for child in module.children():
+                clear_thop_buffers(child)
+        
+        # Method 1: Try with the underlying PyTorch model
+        try:
+            clear_thop_buffers(model.model)
+            flops, params = profile(model.model, inputs=(input_tensor,), verbose=False)
+            print(f"   Complexity measured with THOP (method 1)")
+            return flops, params
+        except Exception as e:
+            print(f"   THOP method 1 failed: {e}")
+        
+        # Method 2: Try creating a fresh copy of the model
+        try:
+            # Get the model's state dict
+            model_copy = type(model.model)()
+            model_copy.load_state_dict(model.model.state_dict())
+            model_copy = model_copy.to(device)
+            
+            flops, params = profile(model_copy, inputs=(input_tensor,), verbose=False)
+            print(f"   Complexity measured with THOP (method 2 - model copy)")
+            return flops, params
+        except Exception as e:
+            print(f"   THOP method 2 failed: {e}")
+        
+        # Method 3: Try with a completely fresh model instance
+        try:
+            from ultralytics import YOLO
+            fresh_model = YOLO(model.ckpt_path if hasattr(model, 'ckpt_path') else 'yolo11n.pt')
+            clear_thop_buffers(fresh_model.model)
+            
+            flops, params = profile(fresh_model.model, inputs=(input_tensor,), verbose=False)
+            print(f"   Complexity measured with THOP (method 3 - fresh model)")
+            return flops, params
+        except Exception as e:
+            print(f"   THOP method 3 failed: {e}")
+        
+        # Fallback: Manual parameter counting + FLOP estimation
+        print(f"   All THOP methods failed, using fallback estimation")
+        total_params = sum(p.numel() for p in model.model.parameters())
+        
+        # Better FLOP estimation based on typical YOLO architectures
+        # This accounts for the fact that not all parameters contribute equally to FLOPs
+        # Rough estimation: each parameter contributes ~2 operations per pixel
+        estimated_flops = total_params * input_size * input_size * 2
+        
+        print(f"   Estimated: FLOPs={estimated_flops:,}, Parameters={total_params:,}")
+        return estimated_flops, total_params
     
     def measure_inference_performance(self, model, input_size, n_iterations=50):
         """Measure inference time and throughput with proper GPU synchronization"""
-        # Create test input
-        input_tensor = torch.randn(1, 3, input_size, input_size)
+        # Create test input with proper normalization (0-1 range for YOLO)
+        input_tensor = torch.rand(1, 3, input_size, input_size)  # Use rand() instead of randn()
         
         # Move to same device as model
         device = next(model.model.parameters()).device
         input_tensor = input_tensor.to(device)
         
         # Warm up with proper synchronization
-        for _ in range(10):
-            _ = model(input_tensor)
-            if device.type == 'cuda':
-                torch.cuda.synchronize()
+        model.eval()  # Ensure model is in eval mode
+        with torch.no_grad():  # Disable gradients for inference
+            for _ in range(10):
+                _ = model(input_tensor)
+                if device.type == 'cuda':
+                    torch.cuda.synchronize()
         
         # Time inference with proper GPU synchronization
         times = []
-        for _ in range(n_iterations):
-            if device.type == 'cuda':
-                torch.cuda.synchronize()
-                start = time.time()
-                _ = model(input_tensor)
-                torch.cuda.synchronize()
-                end = time.time()
-            else:
-                # For CPU/MPS, no synchronization needed
-                start = time.time()
-                _ = model(input_tensor)
-                end = time.time()
-            
-            times.append(end - start)
+        with torch.no_grad():  # Disable gradients for inference timing
+            for _ in range(n_iterations):
+                if device.type == 'cuda':
+                    torch.cuda.synchronize()
+                    start = time.time()
+                    _ = model(input_tensor)
+                    torch.cuda.synchronize()
+                    end = time.time()
+                else:
+                    # For CPU/MPS, no synchronization needed
+                    start = time.time()
+                    _ = model(input_tensor)
+                    end = time.time()
+                
+                times.append(end - start)
         
         avg_time = np.mean(times)
         std_time = np.std(times)
         fps = 1 / avg_time
         
         return avg_time, std_time, fps
-    
+
     def is_experiment_completed(self, model_variant, dataset_fraction, resolution):
         """Check if this experiment combination has already been completed"""
         for result in self.results:

@@ -2,7 +2,7 @@
 
 # Dataset configuration
 dataset:
-  root_dir: "/Users/gabriel/Local Documents/Data/Lacuna-fund"
+  root_dir: "/Users/gabriel/Local Documents/Data/Lacuna-fund/data"
   yaml_file: "solar_panel_dataset.yaml"
 
 # Study parameters
