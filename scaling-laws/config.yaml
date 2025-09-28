@@ -1,0 +1,31 @@
+# YOLO Scaling Law Study Configuration
+
+# Dataset configuration
+dataset:
+  root_dir: "/Users/gabriel/Local Documents/Data/Lacuna-fund"
+  yaml_file: "solar_panel_dataset.yaml"
+
+# Study parameters
+study:
+  dataset_fractions: [0.1, 0.25, 0.5, 1.0]
+  model_variants: ["yolo11n.pt", "yolo11s.pt", "yolo11m.pt", "yolo11l.pt", "yolo11x.pt"]
+  resolutions: [416, 640, 1280]
+  epochs: 50
+
+# Training parameters
+training:
+  batch_size_scale: 64  # Base batch size, scaled by resolution
+  patience: 10  # Early stopping patience
+  lr0: 0.01  # Initial learning rate
+  lrf: 0.01  # Final learning rate
+  momentum: 0.937  # SGD momentum
+  weight_decay: 0.0005  # Weight decay
+  warmup_epochs: 3  # Warmup epochs
+  warmup_momentum: 0.8  # Warmup momentum
+  warmup_bias_lr: 0.1  # Warmup bias learning rate
+
+# Results configuration
+results:
+  output_dir: "scaling_results"
+  save_models: true
+  save_plots: true
