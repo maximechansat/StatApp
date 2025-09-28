@@ -1,0 +1,27 @@
+[
+  {
+    "model_variant": "yolo11n.pt",
+    "dataset_fraction": 0.1,
+    "resolution": 416,
+    "dataset_size": 718,
+    "epochs": 50,
+    "batch_size": 32,
+    "device": "mps",
+    "device_name": "Apple Silicon (MPS)",
+    "timestamp": "2025-09-28 17:52:32",
+    "mAP50": 0.4879716048967753,
+    "mAP50_95": 0.32707015861775207,
+    "precision": 0.6449559647302028,
+    "recall": 0.5256406876737383,
+    "f1": 0.0,
+    "flops": 1397278480.0,
+    "params": 2624080.0,
+    "model_size_mb": 5.0712738037109375,
+    "inference_time_ms": 14.719905853271484,
+    "inference_std_ms": 2.5961527693849664,
+    "fps": 67.9352171113072,
+    "gpu_memory_mb": 0,
+    "train_loss": 0.0,
+    "val_loss": 0.0
+  }
+]

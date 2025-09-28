@@ -3,4 +3,5 @@ src/__pycache__
 src/runs
 *.ipynb
 *.pt
-scaling-laws/scaling_results
+scaling-laws/scaling_results/temp_images
+.DS_Store

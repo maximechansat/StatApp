@@ -1,0 +1,2 @@
+model_variant,dataset_fraction,resolution,dataset_size,epochs,batch_size,device,device_name,timestamp,mAP50,mAP50_95,precision,recall,f1,flops,params,model_size_mb,inference_time_ms,inference_std_ms,fps,gpu_memory_mb,train_loss,val_loss
+yolo11n.pt,0.1,416,718,50,32,mps,Apple Silicon (MPS),2025-09-28 17:52:32,0.4879716048967753,0.32707015861775207,0.6449559647302028,0.5256406876737383,0.0,1397278480.0,2624080.0,5.0712738037109375,14.719905853271484,2.5961527693849664,67.9352171113072,0,0.0,0.0
