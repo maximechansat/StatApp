@@ -1,0 +1,7 @@
+names:
+  0: solar_panel
+nc: 1
+path: scaling_results/temp_images
+test: images/test
+train: images/train
+val: images/val

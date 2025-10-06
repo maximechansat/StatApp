@@ -98,5 +98,30 @@
     "gpu_memory_mb": 1502.61669921875,
     "train_loss": 0.0,
     "val_loss": 0.0
+  },
+  {
+    "model_variant": "yolo11n.pt",
+    "dataset_fraction": 1.0,
+    "resolution": 416,
+    "dataset_size": 14362,
+    "epochs": 50,
+    "batch_size": 32,
+    "device": "cuda",
+    "device_name": "NVIDIA TITAN Xp",
+    "timestamp": "2025-10-06 17:05:42",
+    "mAP50": 0.5627029445755583,
+    "mAP50_95": 0.41239688099301464,
+    "precision": 0.688536836542608,
+    "recall": 0.5738289814039912,
+    "f1": 0.0,
+    "flops": 1397278480.0,
+    "params": 2624080.0,
+    "model_size_mb": 5.0735931396484375,
+    "inference_time_ms": 7.824797630310059,
+    "inference_std_ms": 0.08057622588369072,
+    "fps": 127.79883228243627,
+    "gpu_memory_mb": 1722.8203125,
+    "train_loss": 0.0,
+    "val_loss": 0.0
   }
 ]
