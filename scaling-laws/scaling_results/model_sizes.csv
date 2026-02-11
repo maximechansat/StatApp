@@ -1,0 +1,6 @@
+model_variant, parameter_count
+yolo11n.pt, 2.9e6
+yolo11s.pt, 9.7e6
+yolo11m.pt, 20.9e6
+yolo11l.pt, 26.1e6
+yolo11x.pt, 58.8e6
