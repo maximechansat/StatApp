@@ -7,7 +7,7 @@ import random
 p_train, p_test, p_val = 0.8, 0.1, 0.1
 xlsx_path = pathlib.Path("../data/solar_panel_data_madagascar.xlsx")
 output_path = pathlib.Path("../data/solar_panel_dataset")
-image_path = pathlib.Path("../data/images")
+image_path = pathlib.Path("../data/img")
 seed = 56
 
 # Set seed for reproducibility
@@ -108,7 +108,7 @@ for _, row in city_counts.iterrows():
 print(
     f"Final Split Totals -> Train: {train_count}, Val: {val_count}, Test: {test_count}"
 )
-exit()
+
 # 4. Map the DataFrames based on assigned cities
 df_images = (
     images_with_list_bounding_boxes[

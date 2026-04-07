@@ -233,8 +233,10 @@ class ScalingLawStudy:
                 return True
         return False
     
-    def run_experiment(self, model_variant, dataset_fraction, resolution):
+    def run_experiment(self, seed, model_variant, dataset_fraction, resolution):
         """Run a single experiment with specific parameters"""
+        self.seed = seed
+        self._set_seeds()
         print(f"\nRunning Experiment:")
         print(f"   Model: {model_variant}")
         print(f"   Dataset: {dataset_fraction*100:.0f}%")
@@ -270,8 +272,7 @@ class ScalingLawStudy:
         if torch.cuda.is_available():
             device = "cuda"
             device_name = torch.cuda.get_device_name(0)
-            # Smart compilation: Skip for nano/small to save time, use reduce-overhead for large models
-            compile_mode = "reduce-overhead" if "n" not in model_variant and "s" not in model_variant else False
+            compile_mode = "reduce-overhead"
         elif torch.backends.mps.is_available():
             device = "mps"
             device_name = "Apple Silicon (MPS)"
@@ -426,7 +427,7 @@ def main():
         return
     
     # Run experiment
-    study.run_experiment(args.model_variant, args.dataset_fraction, args.resolution)
+    study.run_experiment(args.seed, args.model_variant, args.dataset_fraction, args.resolution)
 
 if __name__ == "__main__":
     main()

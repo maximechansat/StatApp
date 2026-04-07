@@ -7,18 +7,19 @@ This script runs all 60 combinations automatically.
 import subprocess
 import sys
 import time
-from pathlib import Path
 
-def run_experiment(dataset_fraction, model_variant, resolution):
+
+def run_experiment(seed, dataset_fraction, model_variant, resolution):
     """Run a single experiment"""
     cmd = [
         sys.executable, "scaling_law_study.py",
+        "--seed", str(seed),
         "--dataset_fraction", str(dataset_fraction),
         "--model_variant", model_variant,
         "--resolution", str(resolution)
     ]
     
-    print(f"Running: {model_variant} | {dataset_fraction*100:.0f}% | {resolution}px")
+    print(f"Running: {seed=} | {model_variant} | {dataset_fraction*100:.0f}% | {resolution}px")
     
     try:
         result = subprocess.run(cmd, check=True, capture_output=True, text=True)
@@ -31,11 +32,12 @@ def run_experiment(dataset_fraction, model_variant, resolution):
 
 def main():
     # All combinations
+    seeds = [4221376603, 3810243382, 6937632396]
     dataset_fractions = [0.1, 0.25, 0.5, 1.0]
     model_variants = ["yolo11n.pt", "yolo11s.pt", "yolo11m.pt", "yolo11l.pt", "yolo11x.pt"]
     resolutions = [416, 640, 1280]
     
-    total_experiments = len(dataset_fractions) * len(model_variants) * len(resolutions)
+    total_experiments = len(dataset_fractions) * len(model_variants) * len(resolutions) * len(seeds)
     completed = 0
     failed = 0
     
@@ -43,24 +45,24 @@ def main():
     print("=" * 60)
     
     start_time = time.time()
-    
-    for dataset_fraction in dataset_fractions:
-        for model_variant in model_variants:
-            for resolution in resolutions:
-                completed += 1
-                print(f"\nExperiment {completed}/{total_experiments}")
-                
-                success = run_experiment(dataset_fraction, model_variant, resolution)
-                if not success:
-                    failed += 1
-                
-                # Show progress
-                elapsed = time.time() - start_time
-                avg_time = elapsed / completed
-                remaining = (total_experiments - completed) * avg_time
-                
-                print(f"   Progress: {completed}/{total_experiments} ({completed/total_experiments*100:.1f}%)")
-                print(f"   Elapsed: {elapsed/3600:.1f}h | Remaining: {remaining/3600:.1f}h")
+    for seed in seeds:
+        for dataset_fraction in dataset_fractions:
+            for model_variant in model_variants:
+                for resolution in resolutions:
+                    completed += 1
+                    print(f"\nExperiment {completed}/{total_experiments}")
+                    
+                    success = run_experiment(dataset_fraction, model_variant, resolution)
+                    if not success:
+                        failed += 1
+                    
+                    # Show progress
+                    elapsed = time.time() - start_time
+                    avg_time = elapsed / completed
+                    remaining = (total_experiments - completed) * avg_time
+                    
+                    print(f"   Progress: {completed}/{total_experiments} ({completed/total_experiments*100:.1f}%)")
+                    print(f"   Elapsed: {elapsed/3600:.1f}h | Remaining: {remaining/3600:.1f}h")
     
     total_time = time.time() - start_time
     
