@@ -6,16 +6,8 @@ import albumentations as A
 from typing import Tuple, Optional
 from enum import StrEnum
 from pathlib import Path
-from enum import StrEnum
-from pathlib import Path
-from typing import Optional, Tuple, Dict, Any
-import torch
-from torch.utils.data import Dataset
-import cv2
-import albumentations as A
+from typing import  Dict, Any
 import numpy as np
-import matplotlib.pyplot as plt
-import matplotlib.patches as patches
 from torch.utils.data import DataLoader
 
 class DatasetMode(StrEnum):

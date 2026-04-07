@@ -7,6 +7,7 @@ dataset:
 
 # Study parameters
 study:
+  seeds: [4221376603, 3810243382, 6937632396]
   dataset_fractions: [0.1, 0.25, 0.5, 1.0]
   model_variants: ["yolo11n.pt", "yolo11s.pt", "yolo11m.pt", "yolo11l.pt", "yolo11x.pt"]
   resolutions: [416, 640, 1280]
@@ -14,8 +15,7 @@ study:
 
 # Training parameters
 training:
-  batch_size_scale: 64  # Base batch size, scaled by resolution
-  patience: 10  # Early stopping patience
+  patience: 5  # Early stopping patience
   lr0: 0.01  # Initial learning rate
   lrf: 0.01  # Final learning rate
   momentum: 0.937  # SGD momentum
@@ -27,5 +27,5 @@ training:
 # Results configuration
 results:
   output_dir: "scaling_results"
-  save_models: true
+  save_models: false
   save_plots: true
