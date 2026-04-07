@@ -18,10 +18,6 @@ import gc
 import warnings
 warnings.filterwarnings('ignore')
 
-# Add src to path
-sys.path.append('../')
-from src.dataset import SolarPanelDataset, collate_fn
-
 class ScalingLawStudy:
     """
     Individual experiment execution for YOLO scaling law study.
