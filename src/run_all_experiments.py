@@ -52,7 +52,7 @@ def main():
                     completed += 1
                     print(f"\nExperiment {completed}/{total_experiments}")
                     
-                    success = run_experiment(dataset_fraction, model_variant, resolution)
+                    success = run_experiment(seed, dataset_fraction, model_variant, resolution)
                     if not success:
                         failed += 1
                     

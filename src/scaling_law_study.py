@@ -242,6 +242,7 @@ class ScalingLawStudy:
         print(f"   Dataset: {dataset_fraction*100:.0f}%")
         print(f"   Resolution: {resolution}px")
         print(f"   Seed: {self.seed}")
+        exp_name = f"{model_variant.split('.')[0]}_f{dataset_fraction}_r{resolution}_s{self.seed}"
         
         # Check if already completed for this specific seed
         if self.is_experiment_completed(model_variant, dataset_fraction, resolution):
@@ -299,8 +300,8 @@ class ScalingLawStudy:
             deterministic=True, # Force CuDNN deterministic algorithms inside YOLO
             rect=True,
             verbose=False,
-            save=False,
-            plots=False,
+            save=True,
+            plots=True,
             val=True,
             patience=self.config['training']['patience'],
             lr0=self.config['training']['lr0'],
@@ -310,8 +311,20 @@ class ScalingLawStudy:
             warmup_epochs=self.config['training']['warmup_epochs'],
             warmup_momentum=self.config['training']['warmup_momentum'],
             warmup_bias_lr=self.config['training']['warmup_bias_lr'],
+            amp=True,
+            project=exp_name,
+            resume=True,
         )
         
+        best_weights_path = self.results_dir / exp_name / "weights" / "best.pt"
+        
+        if not best_weights_path.exists():
+            print(f"   WARNING: {best_weights_path} not found! Using final memory weights.")
+            best_model = model  # Fallback
+        else:
+            print("   Loading best checkpoint from disk...")
+            best_model = YOLO(str(best_weights_path))
+
         # Clean up temporary files
         if dataset_fraction < 1.0:
             if temp_yaml.exists(): temp_yaml.unlink()
@@ -319,15 +332,16 @@ class ScalingLawStudy:
         
         # Evaluate on validation set
         print("   Evaluating on validation set...")
-        val_results = model.val(
+        val_results = best_model.val(
             data=str(self.root_dir / self.yaml_file),
             imgsz=resolution,
-            verbose=False
+            verbose=False,
+            split="test"
         )
         
         # Measure inference performance
         print("   Measuring inference performance...")
-        avg_time, std_time, fps = self.measure_inference_performance(model, resolution)
+        avg_time, std_time, fps = self.measure_inference_performance(best_model, resolution)
         
         # Measure GPU memory usage if available
         gpu_memory_used = 0
@@ -337,12 +351,10 @@ class ScalingLawStudy:
         
         # Save model if configured
         if self.config['results']['save_models']:
-            model_name = f"{model_variant.split('.')[0]}_f{dataset_fraction}_r{resolution}_s{self.seed}"
+            model_name = exp_name
             model_path = self.results_dir / f"{model_name}.pt"
-            model.save(model_path)
+            best_model.save(model_path)
             model_size_mb = model_path.stat().st_size / (1024 * 1024)
-        else:
-            model_size_mb = 0
         
         # Extract metrics
         metrics = val_results.results_dict if hasattr(val_results, 'results_dict') else {}
