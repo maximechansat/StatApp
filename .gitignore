@@ -2,5 +2,7 @@ data/
 src/__pycache__
 src/runs
 *.pt
-scaling-laws/scaling_results/temp_images
+src/scaling-laws/scaling_results/temp_images
+src/wandb
+
 .DS_Store

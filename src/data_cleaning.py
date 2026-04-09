@@ -5,9 +5,9 @@ import pathlib
 import random
 
 p_train, p_test, p_val = 0.8, 0.1, 0.1
-xlsx_path = pathlib.Path("../data/solar_panel_data_madagascar.xlsx")
-output_path = pathlib.Path("../data/solar_panel_dataset")
-image_path = pathlib.Path("../data/img")
+xlsx_path = pathlib.Path("../../data/solar_panel_data_madagascar.xlsx")
+output_path = pathlib.Path("../../data/solar_panel_dataset")
+image_path = pathlib.Path("../../data/img")
 seed = 56
 
 # Set seed for reproducibility

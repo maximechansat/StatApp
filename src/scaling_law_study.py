@@ -5,6 +5,7 @@ import json
 import time
 import numpy as np
 import pandas as pd
+import wandb
 from pathlib import Path
 import sys
 import torch
@@ -41,7 +42,6 @@ class ScalingLawStudy:
         
         # Training parameters
         self.epochs = self.config['study']['epochs']
-        self.batch_scale = self.config['training']['batch_size_scale']
         self.seed = seed
         
         # Set seeds for reproducibility
@@ -176,52 +176,56 @@ class ScalingLawStudy:
         return flops, params
     
     def measure_inference_performance(self, model, input_size, n_iterations=50):
-        """Measure inference time and throughput with FP16 and sync"""
-        input_tensor = torch.rand(1, 3, input_size, input_size)
-        device = next(model.model.parameters()).device
-        input_tensor = input_tensor.to(device)
-        
-        model.eval() 
-        
-        # Use half precision for realistic deployment benchmarking on T4
-        if device.type == 'cuda':
-            model.half()
-            input_tensor = input_tensor.half()
+            """Measure inference time and throughput with FP16 and sync"""
             
-        with torch.no_grad(): 
-            # Warm up
-            for _ in range(10):
-                _ = model(input_tensor)
-                if device.type == 'cuda':
-                    torch.cuda.synchronize()
+            # --- FIX: Extract the raw PyTorch model to bypass Ultralytics overhead ---
+            # This prevents the context manager crash and measures pure NN hardware speed
+            pytorch_model = model.model
+            pytorch_model.eval() 
             
-            # Time inference
-            times = []
-            for _ in range(n_iterations):
-                if device.type == 'cuda':
-                    torch.cuda.synchronize()
-                    start = time.time()
-                    _ = model(input_tensor)
-                    torch.cuda.synchronize()
-                    end = time.time()
-                else:
-                    start = time.time()
-                    _ = model(input_tensor)
-                    end = time.time()
+            input_tensor = torch.rand(1, 3, input_size, input_size)
+            device = next(pytorch_model.parameters()).device
+            input_tensor = input_tensor.to(device)
+            
+            # Use half precision for realistic deployment benchmarking on T4/A2
+            if device.type == 'cuda':
+                pytorch_model.half()
+                input_tensor = input_tensor.half()
                 
-                times.append(end - start)
-        
-        # Clean up FP16 weights to prevent memory fragmentation
-        if device.type == 'cuda':
-            model.float()
-            del input_tensor
-            torch.cuda.empty_cache()
+            with torch.no_grad(): 
+                # Warm up
+                for _ in range(10):
+                    _ = pytorch_model(input_tensor)
+                    if device.type == 'cuda':
+                        torch.cuda.synchronize()
+                
+                # Time inference
+                times = []
+                for _ in range(n_iterations):
+                    if device.type == 'cuda':
+                        torch.cuda.synchronize()
+                        start = time.time()
+                        _ = pytorch_model(input_tensor)
+                        torch.cuda.synchronize()
+                        end = time.time()
+                    else:
+                        start = time.time()
+                        _ = pytorch_model(input_tensor)
+                        end = time.time()
+                    
+                    times.append(end - start)
             
-        avg_time = np.mean(times)
-        std_time = np.std(times)
-        fps = 1 / avg_time
-        
-        return avg_time, std_time, fps
+            # Clean up FP16 weights to prevent memory fragmentation
+            if device.type == 'cuda':
+                pytorch_model.float()
+                del input_tensor
+                torch.cuda.empty_cache()
+                
+            avg_time = np.mean(times)
+            std_time = np.std(times)
+            fps = 1 / avg_time
+            
+            return avg_time, std_time, fps
 
     def is_experiment_completed(self, model_variant, dataset_fraction, resolution):
         """Check if this experiment combination has already been completed FOR THIS SEED"""
@@ -256,7 +260,7 @@ class ScalingLawStudy:
         flops, params = self.measure_model_complexity(model, resolution)
         
         # Calculate conservative physical batch size
-        batch_size = min(32, max(2, self.batch_scale // (resolution // 320)))
+        batch_size = 32
         
         # Handle dataset fraction by modifying the YAML file temporarily
         original_yaml = self.root_dir / self.yaml_file
@@ -282,12 +286,26 @@ class ScalingLawStudy:
             device = "cpu"
             device_name = "CPU"
             compile_mode = False
-        
+        print(device)
         print(f"   Using device: {device_name}")
         print(f"   Training for {self.epochs} epochs with physical batch size {batch_size} (Mathematical batch=64)...")
         if compile_mode:
             print(f"   Native compilation enabled: {compile_mode}")
         
+        wandb.init(
+            project="YOLO-Scaling-Laws", # All 60 runs will go into this dashboard
+            name=exp_name,
+            config={
+                "model_variant": model_variant,
+                "dataset_fraction": dataset_fraction,
+                "resolution": resolution,
+                "seed": self.seed,
+                "epochs": self.epochs,
+                "physical_batch_size": batch_size,
+                "mathematical_batch_size": 64,
+                "optimizer": "AdamW"
+            }
+        )
         train_results = model.train(
             data=data_path,
             epochs=self.epochs,
@@ -312,15 +330,17 @@ class ScalingLawStudy:
             warmup_momentum=self.config['training']['warmup_momentum'],
             warmup_bias_lr=self.config['training']['warmup_bias_lr'],
             amp=True,
-            project=exp_name,
-            resume=True,
+            project="YOLO-Scaling-Laws",
+            name=exp_name,
+            optimizer='AdamW',  # Force consistent optimizer
+            cos_lr=True,
         )
         
-        best_weights_path = self.results_dir / exp_name / "weights" / "best.pt"
+        best_weights_path = Path(train_results.save_dir) / "weights" / "best.pt"
         
         if not best_weights_path.exists():
             print(f"   WARNING: {best_weights_path} not found! Using final memory weights.")
-            best_model = model  # Fallback
+            best_model = model # Fallback
         else:
             print("   Loading best checkpoint from disk...")
             best_model = YOLO(str(best_weights_path))
@@ -358,7 +378,14 @@ class ScalingLawStudy:
         
         # Extract metrics
         metrics = val_results.results_dict if hasattr(val_results, 'results_dict') else {}
+        if wandb.run is not None:
+            wandb.run.summary["efficiency/flops"] = flops
+            wandb.run.summary["efficiency/parameters"] = params
+            wandb.run.summary["efficiency/inference_fps"] = fps
+            wandb.run.summary["efficiency/inference_time_ms"] = avg_time * 1000
         
+        # Close the W&B run so the next experiment starts fresh
+        wandb.finish()
         result = {
             'seed': self.seed,
             'model_variant': model_variant,

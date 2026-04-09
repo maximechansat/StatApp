@@ -2,7 +2,7 @@
 
 # Dataset configuration
 dataset:
-  root_dir: "/Users/gabriel/Local Documents/Data/Lacuna-fund/data"
+  root_dir: "/home/onyxia/work/data/solar_panel_dataset"
   yaml_file: "solar_panel_dataset.yaml"
 
 # Study parameters
@@ -15,9 +15,9 @@ study:
 
 # Training parameters
 training:
-  patience: 5  # Early stopping patience
-  lr0: 0.01  # Initial learning rate
-  lrf: 0.01  # Final learning rate
+  patience: 0  # Early stopping patience
+  lr0: 0.002  # Initial learning rate
+  lrf: 0.002  # Final learning rate
   momentum: 0.937  # SGD momentum
   weight_decay: 0.0005  # Weight decay
   warmup_epochs: 3  # Warmup epochs

@@ -22,7 +22,7 @@ def run_experiment(seed, dataset_fraction, model_variant, resolution):
     print(f"Running: {seed=} | {model_variant} | {dataset_fraction*100:.0f}% | {resolution}px")
     
     try:
-        result = subprocess.run(cmd, check=True, capture_output=True, text=True)
+        subprocess.run(cmd, check=True)
         print(f"   Success")
         return True
     except subprocess.CalledProcessError as e:
@@ -51,7 +51,6 @@ def main():
                 for resolution in resolutions:
                     completed += 1
                     print(f"\nExperiment {completed}/{total_experiments}")
-                    
                     success = run_experiment(seed, dataset_fraction, model_variant, resolution)
                     if not success:
                         failed += 1
