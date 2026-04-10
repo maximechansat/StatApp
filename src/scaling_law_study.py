@@ -260,7 +260,7 @@ class ScalingLawStudy:
         flops, params = self.measure_model_complexity(model, resolution)
         
         # Calculate conservative physical batch size
-        batch_size = 32
+        batch_size = 16
         
         # Handle dataset fraction by modifying the YAML file temporarily
         original_yaml = self.root_dir / self.yaml_file
@@ -337,6 +337,7 @@ class ScalingLawStudy:
         )
         
         best_weights_path = Path(train_results.save_dir) / "weights" / "best.pt"
+        last_weights_path = Path(train_results.save_dir) / "weights" / "last.pt"
         
         if not best_weights_path.exists():
             print(f"   WARNING: {best_weights_path} not found! Using final memory weights.")
@@ -368,13 +369,6 @@ class ScalingLawStudy:
         if device == "cuda":
             gpu_memory_used = torch.cuda.max_memory_allocated() / (1024**2)  # MB
             torch.cuda.reset_peak_memory_stats()
-        
-        # Save model if configured
-        if self.config['results']['save_models']:
-            model_name = exp_name
-            model_path = self.results_dir / f"{model_name}.pt"
-            best_model.save(model_path)
-            model_size_mb = model_path.stat().st_size / (1024 * 1024)
         
         # Extract metrics
         metrics = val_results.results_dict if hasattr(val_results, 'results_dict') else {}
@@ -410,7 +404,6 @@ class ScalingLawStudy:
             # Efficiency metrics
             'flops': flops,
             'params': params,
-            'model_size_mb': model_size_mb,
             'inference_time_ms': avg_time * 1000,
             'inference_std_ms': std_time * 1000,
             'fps': fps,
@@ -426,6 +419,11 @@ class ScalingLawStudy:
         
         # Save results immediately
         self._save_results()
+
+        if best_weights_path.exists():
+            best_weights_path.unlink()
+        if last_weights_path.exists():
+            last_weights_path.unlink()
         
         # --- Aggressive VRAM cleanup to prevent OOM on next iteration ---
         del model

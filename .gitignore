@@ -1,6 +1,7 @@
 data/
 src/__pycache__
 src/runs
+runs
 *.pt
 src/scaling-laws/scaling_results/temp_images
 src/wandb
