@@ -277,7 +277,7 @@ class ScalingLawStudy:
         if torch.cuda.is_available():
             device = "cuda"
             device_name = torch.cuda.get_device_name(0)
-            compile_mode = "reduce-overhead"
+            compile_mode = "False"
         elif torch.backends.mps.is_available():
             device = "mps"
             device_name = "Apple Silicon (MPS)"
