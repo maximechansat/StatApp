@@ -45,10 +45,10 @@ def main():
     print("=" * 60)
     
     start_time = time.time()
-    for seed in seeds:
-        for dataset_fraction in dataset_fractions:
-            for model_variant in model_variants:
-                for resolution in resolutions:
+    for model_variant in model_variants:
+        for resolution in resolutions:
+            for seed in seeds:
+                for dataset_fraction in dataset_fractions:
                     completed += 1
                     print(f"\nExperiment {completed}/{total_experiments}")
                     success = run_experiment(seed, dataset_fraction, model_variant, resolution)

@@ -260,7 +260,7 @@ class ScalingLawStudy:
         flops, params = self.measure_model_complexity(model, resolution)
         
         # Calculate conservative physical batch size
-        batch_size = 16
+        batch_size = 64
         
         # Handle dataset fraction by modifying the YAML file temporarily
         original_yaml = self.root_dir / self.yaml_file
