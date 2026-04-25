@@ -260,7 +260,7 @@ class ScalingLawStudy:
         flops, params = self.measure_model_complexity(model, resolution)
         
         # Calculate conservative physical batch size
-        batch_size = 32
+        batch_size = 8
         
         # Handle dataset fraction by modifying the YAML file temporarily
         original_yaml = self.root_dir / self.yaml_file
@@ -277,7 +277,7 @@ class ScalingLawStudy:
         if torch.cuda.is_available():
             device = "cuda"
             device_name = torch.cuda.get_device_name(0)
-            compile_mode = "reduce-overhead"
+            compile_mode = "default"
         elif torch.backends.mps.is_available():
             device = "mps"
             device_name = "Apple Silicon (MPS)"
