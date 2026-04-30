@@ -34,7 +34,7 @@ def main():
     # All combinations
     seeds = [4221376603, 3810243382, 693763239]
     dataset_fractions = [0.1, 0.25, 0.5, 1.0]
-    model_variants = ["yolo11m.pt", "yolo11l.pt", "yolo11x.pt"]
+    model_variants = ["yolo11l.pt", "yolo11x.pt"]
     resolutions = [416, 640, 1280]
     
     total_experiments = len(dataset_fractions) * len(model_variants) * len(resolutions) * len(seeds)
