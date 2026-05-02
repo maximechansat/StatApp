@@ -4156,5 +4156,32 @@
     "gpu_memory_mb": 10364.8291015625,
     "train_loss": 0.0,
     "val_loss": 0.0
+  },
+  {
+    "seed": 693763239,
+    "model_variant": "yolo11x.pt",
+    "dataset_fraction": 1.0,
+    "resolution": 640,
+    "dataset_size": 7180,
+    "epochs": 50,
+    "physical_batch_size": 16,
+    "mathematical_batch_size": 64,
+    "compile_mode": "default",
+    "device": "cuda",
+    "device_name": "Tesla T4",
+    "timestamp": "2026-04-30 18:01:17",
+    "mAP50": 0.4504834237095653,
+    "mAP50_95": 0.33130143463917205,
+    "precision": 0.5977858900983808,
+    "recall": 0.5525428939257634,
+    "f1": 0.0,
+    "flops": 97979366400.0,
+    "params": 56966176.0,
+    "inference_time_ms": 24.577722549438477,
+    "inference_std_ms": 0.23288860152735255,
+    "fps": 40.68725236801271,
+    "gpu_memory_mb": 10428.15869140625,
+    "train_loss": 0.0,
+    "val_loss": 0.0
   }
 ]
