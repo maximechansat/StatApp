@@ -32,7 +32,7 @@ def run_experiment(seed, dataset_fraction, model_variant, resolution):
 
 def main():
     # All combinations
-    seeds = [4221376603, 3810243382, 693763239]
+    seeds = [693763239]
     dataset_fractions = [1.0]
     model_variants = ["yolo11x.pt"]
     resolutions = [1280]
