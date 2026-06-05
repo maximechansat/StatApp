@@ -4777,5 +4777,32 @@
     "gpu_memory_mb": 11432.80126953125,
     "train_loss": 0.0,
     "val_loss": 0.0
+  },
+  {
+    "seed": 693763239,
+    "model_variant": "yolo11x.pt",
+    "dataset_fraction": 1.0,
+    "resolution": 1280,
+    "dataset_size": 7180,
+    "epochs": 50,
+    "physical_batch_size": 4,
+    "mathematical_batch_size": 64,
+    "compile_mode": "default",
+    "device": "cuda",
+    "device_name": "NVIDIA A2",
+    "timestamp": "2026-06-05 11:39:31",
+    "mAP50": 0.3321998583509156,
+    "mAP50_95": 0.21710347248243486,
+    "precision": 0.5383435278864391,
+    "recall": 0.40734366035570857,
+    "f1": 0.0,
+    "flops": 390898176000.0,
+    "params": 56874931.0,
+    "inference_time_ms": 138.73480796813965,
+    "inference_std_ms": 0.39080395327059014,
+    "fps": 7.207996426027774,
+    "gpu_memory_mb": 11432.80126953125,
+    "train_loss": 0.0,
+    "val_loss": 0.0
   }
 ]

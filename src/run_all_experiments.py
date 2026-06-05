@@ -32,10 +32,10 @@ def run_experiment(seed, dataset_fraction, model_variant, resolution):
 
 def main():
     # All combinations
-    seeds = [693763239]
-    dataset_fractions = [1.0]
-    model_variants = ["yolo11x.pt"]
-    resolutions = [1280]
+    seeds = [693763239, 3810243382, 4221376603]
+    dataset_fractions = [0.1, 0.25, 0.5, 1.0]
+    model_variants = ["yolo11n.pt", "yolo11s.pt", "yolo11m.pt", "yolo11l.pt", "yolo11x.pt"]
+    resolutions = [640, 416, 1280]
     
     total_experiments = len(dataset_fractions) * len(model_variants) * len(resolutions) * len(seeds)
     completed = 0
